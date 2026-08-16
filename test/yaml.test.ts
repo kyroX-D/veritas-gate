@@ -200,3 +200,11 @@ test("a dangling backslash is rejected", () => {
 test("an invalid unicode escape is rejected", () => {
   assert.throws(() => parseYaml('run: "\\uZZZZ"'), YamlError);
 });
+
+test("a leading UTF-8 BOM is ignored", () => {
+  // Pinned here as well as in config.test.ts: both layers strip a BOM
+  // independently, so a test that goes through loadConfig cannot fail when
+  // only one of them breaks.
+  const bom = String.fromCharCode(0xfeff);
+  assert.deepEqual(parseYaml(`${bom}version: 1\nchecks: []\n`), { version: 1, checks: [] });
+});

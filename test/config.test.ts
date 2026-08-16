@@ -236,9 +236,15 @@ test("a malformed package.json does not throw", () => {
   assert.deepEqual(detectProject(root).ecosystems, []);
 });
 
+// The BOM in these two tests is written as an explicit \uFEFF escape rather
+// than a literal character. It is test data, not stray invisible Unicode, and
+// spelling it out keeps it from being "cleaned" away by a tool or an editor —
+// which would leave both tests passing while testing nothing.
+const BOM = "\uFEFF";
+
 test("a package.json with a UTF-8 BOM is still detected", () => {
   const root = makeProject({
-    "package.json": `﻿${JSON.stringify({ scripts: { test: "node --test" } })}`,
+    "package.json": `${BOM}${JSON.stringify({ scripts: { test: "node --test" } })}`,
   });
 
   assert.deepEqual(detectProject(root).ecosystems, ["node"]);
@@ -246,7 +252,7 @@ test("a package.json with a UTF-8 BOM is still detected", () => {
 });
 
 test("a .veritas.yml with a UTF-8 BOM is still parsed", () => {
-  const root = makeProject({ ".veritas.yml": "﻿checks:\n  - name: t\n    run: echo hi\n" });
+  const root = makeProject({ ".veritas.yml": BOM + "checks:\n  - name: t\n    run: echo hi\n" });
   const loaded = loadConfig(root);
 
   assert.equal(loaded.source, "file");
