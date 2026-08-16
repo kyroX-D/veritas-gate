@@ -2,7 +2,7 @@
   "name": "veritas-gate",
   "displayName": "veritas-gate",
   "version": "0.1.0",
-  "description": "Your agent doesn't get to say \"done\" without proof. Runs your tests, typecheck and lint before a turn is allowed to end.",
+  "description": "Your agent marks its own homework. veritas-gate grades it. Runs your configured checks before a turn is allowed to end, and blocks with the real failure output.",
   "license": "MIT",
   "keywords": ["verification", "tests", "hooks", "quality"],
   "homepage": "https://github.com/YOUR-USERNAME/veritas-gate",

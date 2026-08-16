@@ -1,7 +1,7 @@
 {
   "name": "veritas-gate",
   "version": "0.1.0",
-  "description": "Your agent doesn't get to say \"done\" without proof.",
+  "description": "Your agent marks its own homework. veritas-gate grades it.",
   "keywords": [
     "claude-code",
     "claude-code-plugin",

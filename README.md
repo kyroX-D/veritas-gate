@@ -5,7 +5,7 @@ __   __  ___  _ __ (_)| |_   __ _  ___         __ _   __ _ | |_   ___
  \ V / |  __/| |   | || |_ | (_| |\__ \ |___|| (_| || (_| || |_ |  __/
   \_/   \___||_|   |_| \__| \__,_||___/       \__, | \__,_| \__| \___|
                                               |___/
-        your agent doesn't get to say "done" without proof
+      Your agent marks its own homework. veritas-gate grades it.
 ```
 
 [![CI](https://github.com/YOUR-USERNAME/veritas-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR-USERNAME/veritas-gate/actions/workflows/ci.yml)
@@ -14,8 +14,13 @@ __   __  ___  _ __ (_)| |_   __ _  ___         __ _   __ _ | |_   ___
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen.svg)](package.json)
 
 A Claude Code plugin that runs your tests before the agent is allowed to finish
-its turn. If something is red, the turn does not end, and the agent gets the
-actual failing assertion instead of a lecture.
+its turn. If something is red, the turn does not end.
+
+Claude Code already gives you a Stop hook, so the wiring is there. This is the
+part you would otherwise write yourself and keep rewriting: project detection,
+a change cache, controlled escalation, fail-open safety, an audit trail, and a
+block message that hands the agent the actual failing assertion along with an
+explicit instruction not to weaken the test to make it green.
 
 ## The problem
 

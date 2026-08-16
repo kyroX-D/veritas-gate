@@ -1417,7 +1417,8 @@ async function decide(rawPayload, context) {
 
 // src/cli.ts
 var VERSION = "0.1.0";
-var USAGE = `veritas-gate ${VERSION} - your agent doesn't get to say "done" without proof.
+var USAGE = `veritas-gate ${VERSION}
+Your agent marks its own homework. This grades it.
 
 Usage:
   veritas init [--force]      Detect the project and write .veritas.yml
