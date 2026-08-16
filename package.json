@@ -1,0 +1,38 @@
+{
+  "name": "veritas-gate",
+  "version": "0.1.0",
+  "description": "Your agent doesn't get to say \"done\" without proof.",
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "hooks",
+    "verification",
+    "agent"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "veritas": "./dist/veritas.mjs"
+  },
+  "files": [
+    "dist",
+    "commands",
+    "skills",
+    "hooks",
+    ".claude-plugin",
+    ".veritas.example.yml"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

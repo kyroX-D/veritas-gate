@@ -1,0 +1,7 @@
+node_modules/
+
+# veritas' own evidence ledger and state are local artifacts, never committed.
+.veritas/
+
+# Scratch space used by the integration tests.
+tmp/
