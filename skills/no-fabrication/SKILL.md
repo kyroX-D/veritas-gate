@@ -24,7 +24,7 @@ Not evidence:
 ## Required instead
 
 1. Run the actual command.
-2. Show the real output — the failing assertion, the exit code, the summary
+2. Show the real output: the failing assertion, the exit code, the summary
    line. Do not paraphrase it into "all tests pass".
 3. State the scope of what you ran. "The 14 tests in `test/config.test.ts`
    pass" is a claim you can support; "the tests pass" usually is not.
@@ -32,7 +32,7 @@ Not evidence:
 If you did not run anything, write **"not tested"**. That is an acceptable
 answer. A false claim of success is not.
 
-If you cannot run it — no network, missing tool, requires credentials — say
+If you cannot run it (no network, missing tool, requires credentials), say
 which command you would run and why you could not, then stop. Do not fill the
 gap with an assumption.
 

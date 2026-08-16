@@ -37,7 +37,7 @@ node -e "process.stdout.write(JSON.stringify({session_id:'demo',cwd:process.cwd(
 ```
 
 The output contains `"decision":"block"` and a `reason` carrying the real
-assertion failure — that reason is what the agent sees instead of being allowed
+assertion failure. That reason is what the agent sees instead of being allowed
 to end its turn.
 
 ## See it go green

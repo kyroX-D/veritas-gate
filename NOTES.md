@@ -6,14 +6,14 @@ Everything below is split into **verified** (read directly from the docs listed)
 
 Docs consulted on 2026-08-16:
 
-- <https://code.claude.com/docs/en/hooks> — hooks reference
+- <https://code.claude.com/docs/en/hooks>, the hooks reference
   (`https://docs.claude.com/en/docs/claude-code/hooks` now 301-redirects here)
-- <https://code.claude.com/docs/en/plugins-reference> — plugin manifest & layout
-- <https://code.claude.com/docs/en/skills> — SKILL.md format
+- <https://code.claude.com/docs/en/plugins-reference>, plugin manifest and layout
+- <https://code.claude.com/docs/en/skills>, SKILL.md format
 
 ---
 
-## 1. Stop hook input payload — VERIFIED
+## 1. Stop hook input payload (verified)
 
 The `Stop` event fires once per turn, "when Claude finishes responding".
 Documented input schema:
@@ -39,10 +39,10 @@ Relevant details:
 - **The loop-protection field is `loop_protection_blocked`** (boolean). The docs
   describe it as indicating "whether Claude's loop protection mechanism blocked
   further iterations".
-- `cwd` is the current working directory — this is what veritas uses to locate
+- `cwd` is the current working directory. This is what veritas uses to locate
   the project root, not `process.cwd()` of the hook process.
 - `prompt_id` requires Claude Code v2.1.196+ and is absent until first user input.
-- `transcript_path` "may lag the in-memory conversation" — veritas does not read it.
+- `transcript_path` "may lag the in-memory conversation". veritas does not read it.
 
 > **Correction to the original spec.** The spec assumed a field meaning "the stop
 > was already triggered by a hook" (the older `stop_hook_active` name). The
@@ -51,7 +51,7 @@ Relevant details:
 > `stop_hook_active` boolean if a given Claude Code build still sends it, because
 > reading an absent field must never make veritas block.
 
-## 2. How a Stop hook blocks — VERIFIED
+## 2. How a Stop hook blocks (verified)
 
 Two documented mechanisms:
 
@@ -87,10 +87,10 @@ Design decision: veritas emits **JSON on stdout and always exits 0**. Reasons:
 - The reason text reaches Claude through a documented field rather than stderr.
 - Exit code 0 means an unexpected crash (non-zero exit) can never be mistaken for
   a deliberate block. This directly implements the fail-open principle.
-- veritas never sets `continue: false` — that would end the session, which is far
+- veritas never sets `continue: false`, which would end the session, something far
   more destructive than declining to stop.
 
-## 3. Consecutive-block limit — **NOT VERIFIED**
+## 3. Consecutive-block limit (NOT verified)
 
 The original spec states: "Claude Code limits how often a Stop hook may block
 consecutively before the block is ignored" and asks for that number.
@@ -100,14 +100,14 @@ the `loop_protection_blocked` input field, which signals that Claude Code's own
 loop protection has already engaged. No threshold, counter, or configuration key
 for it appears in the hooks reference.
 
-Consequences for the design — veritas does not guess a number:
+Consequences for the design, given that veritas does not guess a number:
 
 1. `loop_protection_blocked === true` in the payload is treated as an
    authoritative "stop blocking now" signal: veritas passes through and emits the
    `NOT VERIFIED` escalation report.
 2. veritas keeps its **own** consecutive-block counter in its state file and gives
    up at `max_attempts`. The default is **3**, chosen to be conservative rather
-   than derived from a documented limit — the point is that veritas escalates
+   than derived from a documented limit. The point is that veritas escalates
    visibly on its own terms before any silent system-level override could occur.
 3. README and `src/hook.ts` both state that this number is a self-imposed
    default, not a documented platform limit.
@@ -115,18 +115,18 @@ Consequences for the design — veritas does not guess a number:
 If someone later finds the real documented number, only `DEFAULT_MAX_ATTEMPTS` in
 `src/config.ts` needs to change.
 
-## 4. Plugin packaging — VERIFIED
+## 4. Plugin packaging (verified)
 
 - Manifest at `.claude-plugin/plugin.json`. Only `name` (kebab-case) is required.
   Optional: `displayName`, `version`, `description`, `author`, `homepage`,
   `repository`, `license`, `keywords`.
 - `.claude-plugin/` contains **only** `plugin.json`. `skills/`, `commands/`,
-  `hooks/` live at the plugin root — putting them inside `.claude-plugin/` is
+  `hooks/` live at the plugin root. Putting them inside `.claude-plugin/` is
   explicitly documented as wrong.
 - Hooks are auto-discovered at `hooks/hooks.json` when the manifest has no `hooks`
   field.
 - `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin directory.
-- **Exec form is the documented recommendation for path placeholders:**
+- Exec form is the documented recommendation for path placeholders:
   `"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/check.js"]`.
   veritas uses exactly this shape, which also sidesteps all Windows shell-quoting
   problems.
@@ -134,7 +134,7 @@ If someone later finds the real documented number, only `DEFAULT_MAX_ATTEMPTS` i
 - Local development install: `claude --plugin-dir /path/to/plugin-root`
   (session-scoped, nothing written to settings).
 
-## 5. Skills — VERIFIED
+## 5. Skills (verified)
 
 - `skills/<name>/SKILL.md`, invoked as `<plugin-name>:<skill-name>`.
 - Frontmatter fields used here: `name`, `description`. Both optional in principle;
@@ -146,7 +146,7 @@ If someone later finds the real documented number, only `DEFAULT_MAX_ATTEMPTS` i
   `disable-model-invocation`, `user-invocable` also exist; veritas uses none of
   them for the `no-fabrication` skill, which is pure behavioural guidance.
 
-## 6. Slash commands — VERIFIED
+## 6. Slash commands (verified)
 
 - Flat `.md` files under `commands/` become `<plugin-name>:<filename>`.
 - Custom commands and skills have been merged: `commands/verify.md` and
@@ -168,7 +168,7 @@ form when unambiguous.
 | --- | --- | --- |
 | 1 | Numeric limit on consecutive Stop-hook blocks | **Not documented.** Mitigated via `loop_protection_blocked` + self-imposed `max_attempts` (default 3). |
 | 2 | Whether `stop_hook_active` is still sent by any current build | Unknown. Read defensively; absence is not an error. |
-| 3 | Whether a top-level `decision`/`reason` (outside `hookSpecificOutput`) is still honoured for `Stop` | Unknown — only the `hookSpecificOutput` shape is documented now. veritas emits **both** shapes; unknown fields are ignored by the parser, so the redundancy is free. |
+| 3 | Whether a top-level `decision`/`reason` (outside `hookSpecificOutput`) is still honoured for `Stop` | Unknown. Only the `hookSpecificOutput` shape is documented now. veritas emits **both** shapes; unknown fields are ignored by the parser, so the redundancy is free. |
 | 4 | Exact behaviour when several plugins' Stop hooks disagree | Not documented. |
 | 5 | Whether hook stdout JSON has a size limit | Not documented. veritas caps `reason` output anyway (last ~50 lines). |
 
@@ -180,5 +180,5 @@ form when unambiguous.
    prints an allow-decision plus a `systemMessage` warning. Fail-open.
 3. Read the project root from the payload's `cwd`, falling back to
    `process.cwd()`.
-4. Never write to stdout except the single JSON object — any stray logging would
+4. Never write to stdout except the single JSON object, because any stray logging would
    corrupt the protocol.

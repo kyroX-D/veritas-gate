@@ -21,7 +21,7 @@ npm run typecheck && npm test && npm run build
 that the plugin works without an install step. Any change under `src/` must be
 accompanied by a rebuilt bundle in the same commit, or the plugin ships stale
 behaviour. A packaging test asserts the bundle exists and behaves, but it cannot
-tell you the bundle is out of date — rebuild before committing.
+tell you the bundle is out of date, so rebuild before committing.
 
 ## Constraints that are not up for negotiation
 
@@ -31,8 +31,8 @@ will not be merged, however good the idea is otherwise.
 - **Zero runtime dependencies.** `package.json` has no `dependencies` block and
   should not grow one. The YAML subset parser in `src/yaml.ts` exists for this
   reason. Dev dependencies are limited to TypeScript and esbuild.
-- **Fail open.** Any internal error — unreadable config, crashing runner,
-  unwritable state — must let the turn through with a warning. `handleHook`
+- **Fail open.** Any internal error (unreadable config, crashing runner,
+  unwritable state) must let the turn through with a warning. `handleHook`
   never throws and never exits non-zero. If you add a code path that can throw,
   add the test that proves it still allows.
 - **Never block on a false positive.** A missing tool, a spawn error, an
@@ -81,7 +81,7 @@ Two things worth knowing before you write a test:
 ## Documentation about the hook API
 
 `NOTES.md` records what was verified against the Claude Code documentation, with
-links, and — just as importantly — what could not be verified. If you learn
+links, and, just as importantly, what could not be verified. If you learn
 something new about the hook protocol, update `NOTES.md` with the source. If you
 find the documented consecutive-block limit that section 3 says does not exist,
 that is the single most useful contribution available.
@@ -94,4 +94,4 @@ or leave it out.
 Conventional Commits: `feat:`, `fix:`, `docs:`, `test:`, `chore:`.
 
 Describe what changed and why. If a test caught a real bug, say what the bug
-was — those messages are the project's memory.
+was. Those messages are the project's memory.
