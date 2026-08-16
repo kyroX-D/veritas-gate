@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { platform } from "node:process";
 
 import {
   readState,
@@ -67,8 +68,26 @@ test("dots are literal, not wildcards", () => {
   assert.equal(globToRegExp("a.ts").test("axts"), false);
 });
 
-test("matchesAny normalises Windows separators", () => {
-  assert.equal(matchesAny("src\\deep\\a.ts", ["src/**"]), true);
+test("matchesAny normalises the platform's own separator", () => {
+  // Patterns are always written with forward slashes. The walk hands over
+  // paths built by node:path, so on Windows they arrive with backslashes.
+  assert.equal(matchesAny(join("src", "deep", "a.ts"), ["src/**"]), true);
+  assert.equal(matchesAny(join("test", "a.ts"), ["src/**"]), false);
+});
+
+test("a backslash is only a separator where the platform says so", () => {
+  // On POSIX a backslash is a legal character in a filename, so treating it as
+  // a separator would be the bug. This test asserted Windows behaviour
+  // unconditionally and failed the first time CI ran it on Linux.
+  const matchesBackslashPath = matchesAny("src\\deep\\a.ts", ["src/**"]);
+
+  assert.equal(
+    matchesBackslashPath,
+    platform === "win32",
+    platform === "win32"
+      ? "on Windows a backslash path should match a forward-slash pattern"
+      : "on POSIX a backslash is part of the filename, not a separator",
+  );
 });
 
 // --- state file ------------------------------------------------------------
