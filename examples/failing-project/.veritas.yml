@@ -1,0 +1,15 @@
+version: 1
+
+checks:
+  - name: test
+    run: npm test
+    timeout: 60
+    blocking: true
+
+max_attempts: 3
+
+watch:
+  - "src/**"
+  - "test/**"
+
+dry_run: false

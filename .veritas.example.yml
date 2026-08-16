@@ -1,0 +1,45 @@
+# veritas-gate configuration reference.
+# Copy to .veritas.yml, or run `veritas init` to generate one from your project.
+
+version: 1
+
+# Checks run in order. A blocking check that fails prevents the agent from
+# ending its turn; a non-blocking check only reports.
+checks:
+  - name: typecheck
+    run: npm run typecheck
+    timeout: 120 # seconds
+    blocking: true
+
+  - name: test
+    run: npm test
+    timeout: 300
+    blocking: true
+
+  - name: lint
+    run: npm run lint
+    timeout: 60
+    blocking: false # reports, does not block
+
+# How many times in a row veritas may block before it gives up, prints a
+# visible NOT VERIFIED report and lets the turn end.
+#
+# This is veritas' own limit. Claude Code does not document a maximum number of
+# consecutive Stop-hook blocks; it exposes a `loop_protection_blocked` flag
+# instead, which veritas also honours. Keeping this low means veritas escalates
+# on its own terms rather than being quietly overridden.
+max_attempts: 3
+
+# Skip the checks entirely when no file matching these globs has changed since
+# the last fully green run. An empty list, or no list at all, means the checks
+# always run.
+#
+# Supported: ** (any number of path segments), * (within one segment), ?
+watch:
+  - "src/**"
+  - "test/**"
+  - "package.json"
+
+# Run everything and report, but never block. Useful for trying veritas out on
+# an existing project without changing how a session behaves.
+dry_run: false

@@ -7,13 +7,28 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync, cpSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * The environment for a spawned veritas, minus this test runner's own markers.
+ *
+ * Node's test runner exports NODE_TEST_CONTEXT to its children. A check that
+ * runs `node --test` inherits it, switches into child-reporter mode and exits 0
+ * even when its tests fail — which would make these tests pass for entirely the
+ * wrong reason.
+ */
+function cleanEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env["NODE_TEST_CONTEXT"];
+  delete env["VERITAS_SKIP"];
+  return env;
+}
 
 const readJson = (relative: string): Record<string, unknown> =>
   JSON.parse(readFileSync(join(pluginRoot, relative), "utf8")) as Record<string, unknown>;
@@ -159,7 +174,7 @@ test("the registered command produces a valid Stop-hook allow decision", () => {
       loop_protection_blocked: false,
     });
 
-    const stdout = execFileSync("node", [script, "hook"], { input: payload, encoding: "utf8", timeout: 60_000 });
+    const stdout = execFileSync("node", [script, "hook"], { input: payload, encoding: "utf8", env: cleanEnv(), timeout: 60_000 });
     const output = JSON.parse(stdout) as { hookSpecificOutput?: { hookEventName?: string; decision?: string } };
 
     assert.equal(output.hookSpecificOutput?.hookEventName, "Stop");
@@ -196,7 +211,7 @@ max_attempts: 3
       loop_protection_blocked: false,
     });
 
-    const stdout = execFileSync("node", [script, "hook"], { input: payload, encoding: "utf8", timeout: 60_000 });
+    const stdout = execFileSync("node", [script, "hook"], { input: payload, encoding: "utf8", env: cleanEnv(), timeout: 60_000 });
     const output = JSON.parse(stdout) as {
       hookSpecificOutput?: { decision?: string; reason?: string };
       systemMessage?: string;
@@ -206,6 +221,46 @@ max_attempts: 3
     assert.match(output.hookSpecificOutput?.reason ?? "", /NOT verified/i);
   } finally {
     rmSync(project, { recursive: true, force: true });
+  }
+});
+
+// --- the example project ---------------------------------------------------
+
+test("the example project is still red, which is the point of it", () => {
+  // Copied to a temp directory rather than run in place: running it in the repo
+  // leaves a .veritas/ state directory behind, and a stale green fingerprint in
+  // it makes this test pass for the wrong reason.
+  const source = join(pluginRoot, "examples", "failing-project");
+  const workspace = mkdtempSync(join(tmpdir(), "veritas-example-"));
+  const example = join(workspace, "failing-project");
+
+  try {
+    cpSync(source, example, { recursive: true });
+    rmSync(join(example, ".veritas"), { recursive: true, force: true });
+
+    const payload = JSON.stringify({
+      session_id: "example-test",
+      cwd: example,
+      hook_event_name: "Stop",
+      loop_protection_blocked: false,
+    });
+
+    const stdout = execFileSync("node", [join(pluginRoot, "dist", "veritas.mjs"), "hook"], {
+      input: payload,
+      encoding: "utf8", env: cleanEnv(),
+      timeout: 120_000,
+    });
+
+    const output = JSON.parse(stdout) as { hookSpecificOutput?: { decision?: string; reason?: string } };
+
+    assert.equal(output.hookSpecificOutput?.decision, "block", "examples/failing-project must fail its own test suite");
+    assert.match(
+      output.hookSpecificOutput?.reason ?? "",
+      /3 !== 6/,
+      "the example README quotes this assertion; keep them in sync",
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
 
@@ -223,7 +278,7 @@ test("the hook exits 0 even when it blocks, so a crash can never block by accide
     // execFileSync throws on a non-zero exit; reaching the assert proves exit 0.
     execFileSync("node", [script, "hook"], {
       input: JSON.stringify({ session_id: "exit-test", cwd: project, hook_event_name: "Stop" }),
-      encoding: "utf8",
+      encoding: "utf8", env: cleanEnv(),
       timeout: 60_000,
     });
   } finally {
