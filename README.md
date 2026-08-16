@@ -83,6 +83,25 @@ Thirty seconds, no build step. The bundle in `dist/` is committed on purpose.
 git clone https://github.com/kyroX-D/veritas-gate
 ```
 
+**Claude desktop app.** Link the clone into your personal skills directory,
+where plugins are auto-discovered, then restart the app:
+
+```bash
+mklink /J "%USERPROFILE%\.claude\skills\veritas-gate" "C:\path\to\veritas-gate"
+```
+
+On macOS and Linux:
+
+```bash
+ln -s /path/to/veritas-gate ~/.claude/skills/veritas-gate
+```
+
+A restart is required, not `/reload-skills`. That command reloads skills;
+hooks and other plugin components need a full restart.
+
+**Claude Code CLI.** One flag, scoped to the session, nothing written to
+settings:
+
 ```bash
 claude --plugin-dir /path/to/veritas-gate
 ```
@@ -325,6 +344,13 @@ A verification tool that oversells itself has a credibility problem. So:
 - It only hooks `Stop`. Claude Code also exposes `TaskCompleted`, which can
   block a task from being marked done. Gating that too is an obvious next step
   and is not implemented yet.
+- The live testing behind it is narrow. Loading, gating a green turn and
+  blocking a red one have been watched happen in a real session, on the Windows
+  desktop app, installed through the skills directory. Not yet watched happen:
+  escalation after `max_attempts`, the `VERITAS_SKIP` bypass mid-session, the
+  `claude --plugin-dir` route, and any session on macOS or Linux. All of those
+  are covered by the test suite and by CI on three platforms, which is evidence
+  but not the same evidence.
 
 ## No network, no telemetry
 

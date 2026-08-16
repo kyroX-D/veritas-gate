@@ -162,6 +162,38 @@ form when unambiguous.
 
 ---
 
+## 7. What a live session confirmed (2026-08-16)
+
+Everything above section 6 came from reading the documentation. This section
+comes from watching it run: Windows desktop app, plugin installed by linking the
+clone into `~/.claude/skills/veritas-gate`, full app restart.
+
+Confirmed:
+
+- **The skills directory loads a full plugin, not just a skill.** Both slash
+  commands and the `no-fabrication` skill appeared as
+  `veritas-gate:verify`, `veritas-gate:status`, `veritas-gate:no-fabrication`.
+  `/reload-skills` was not enough; hooks needed a restart, which matches the
+  documented note that component changes require `/reload-plugins` or a restart.
+- **The `Stop` hook fires and its decision is honoured.** A green project
+  produced `trigger: hook, status: passed` in the ledger and a stored
+  `lastGreenFingerprint`. A red project produced `trigger: hook, status: failed,
+  exit_code: 1`, `blocks: 1` in the state file, and `lastGreenFingerprint: null`.
+- **The `reason` text reaches the model.** Claude Code presented it under the
+  label `Stop hook feedback`, carrying the full block message including the
+  assertion and the instruction not to weaken the check.
+- **`session_id` is a UUID** and is stable within a session, which is what the
+  per-session attempt counter relies on.
+- Cost, for reference: the hook added roughly 16 seconds to one turn in this
+  repository (typecheck 2.4s, test 13.7s). The next turn was skipped by the
+  change cache.
+
+Not confirmed live, and listed in the README as such: escalation after
+`max_attempts`, the `VERITAS_SKIP` bypass mid-session, the
+`claude --plugin-dir` route, and any session on macOS or Linux.
+
+---
+
 ## Explicitly NOT verified
 
 | # | Item | Status |
