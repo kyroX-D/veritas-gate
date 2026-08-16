@@ -21,7 +21,7 @@ import { handleHook } from "./hook.ts";
 export const VERSION = "0.1.0";
 
 export const USAGE = `veritas-gate ${VERSION}
-Your agent marks its own homework. This grades it.
+AI agents can report that they're done. This makes them prove it.
 
 Usage:
   veritas init [--force]      Detect the project and write .veritas.yml

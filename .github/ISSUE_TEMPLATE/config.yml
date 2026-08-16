@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or idea
+    url: https://github.com/YOUR-USERNAME/veritas-gate/discussions
+    about: Workflows, feature ideas and anything that isn't a bug belong in Discussions.
+  - name: It didn't load as a plugin
+    url: https://github.com/YOUR-USERNAME/veritas-gate/discussions/categories/q-a
+    about: Plugin loading is the least battle-tested path. Please say which Claude Code version you're on.

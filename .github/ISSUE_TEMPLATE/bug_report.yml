@@ -1,0 +1,55 @@
+name: Bug report
+description: Something blocked when it shouldn't have, or didn't when it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: a check showing `[ n/a ]` means the command isn't on
+        PATH, and veritas stopping after a few blocks is `max_attempts` working
+        as intended. Both are documented in the README under "what it won't do".
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did veritas do, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your .veritas.yml
+      description: Paste it as-is. If you don't have one, say so; auto-detection was used.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: output
+    attributes:
+      label: The output you got
+      description: >
+        From `veritas verify`, or the hook's JSON. Please paste the real output
+        rather than describing it.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: veritas-gate version
+      description: "`node dist/veritas.mjs --version`"
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Node version
+      placeholder: "Windows 11, Node 22.18.0"
+    validations:
+      required: true

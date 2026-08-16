@@ -5,84 +5,75 @@ __   __  ___  _ __ (_)| |_   __ _  ___         __ _   __ _ | |_   ___
  \ V / |  __/| |   | || |_ | (_| |\__ \ |___|| (_| || (_| || |_ |  __/
   \_/   \___||_|   |_| \__| \__,_||___/       \__, | \__,_| \__| \___|
                                               |___/
-      Your agent marks its own homework. veritas-gate grades it.
+                Agents report. veritas-gate verifies.
 ```
 
 [![CI](https://github.com/YOUR-USERNAME/veritas-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR-USERNAME/veritas-gate/actions/workflows/ci.yml)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![node](https://img.shields.io/badge/node-20.11%2B-brightgreen.svg)](package.json)
-[![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen.svg)](package.json)
+[![release](https://img.shields.io/github/v/release/YOUR-USERNAME/veritas-gate?sort=semver)](https://github.com/YOUR-USERNAME/veritas-gate/releases)
+[![license](https://img.shields.io/github/license/YOUR-USERNAME/veritas-gate)](LICENSE)
+[![node](https://img.shields.io/badge/node-20.11%2B-brightgreen)](package.json)
+[![runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
 
-A Claude Code plugin that runs your tests before the agent is allowed to finish
-its turn. If something is red, the turn does not end.
+> **AI agents can report that they're done. veritas-gate makes them prove it.**
 
-Claude Code already gives you a Stop hook, so the wiring is there. This is the
-part you would otherwise write yourself and keep rewriting: project detection,
-a change cache, controlled escalation, fail-open safety, an audit trail, and a
-block message that hands the agent the actual failing assertion along with an
-explicit instruction not to weaken the test to make it green.
+An AI coding agent finishes a task and tells you the tests pass. Sometimes it
+ran them. Sometimes it read the code, decided the change looked right, and
+reported success. From the outside those two cases are identical, and you only
+find out which one you got after you pull the branch.
 
-## The problem
+veritas-gate is a Claude Code plugin that closes the gap. It intercepts the end
+of every turn, runs the checks you configured, and refuses to let the turn
+finish while a blocking check is failing. The agent gets the real failing
+assertion back, not a warning to try harder.
 
-You have seen this message:
+**Self-reported completion becomes mechanically verified completion.**
 
-> I've fixed the bug and all the tests pass.
-
-And you have seen what happens when you run the tests yourself.
-
-The agent usually is not lying. It read the code, the change looked right, and
-nothing in the loop ever forced the claim to be checked before it landed in
-front of you. Running the tests is the cheapest step to skip and the most
-expensive one to have skipped.
-
-veritas-gate puts the check back in the loop. It hooks the moment a turn ends,
-runs whatever you configured, and refuses to let the turn finish while a
-blocking check is failing.
-
-## What it looks like
-
-When a blocking check fails, this is what the agent receives instead of being
-allowed to stop:
+## The 30-second version
 
 ```
-veritas-gate: the task is NOT verified. Do not report it as complete.
+  1. The agent says it is finished.
 
-1 blocking check(s) failed (attempt 1 of 3):
+     "Fixed the bug in total(). All tests pass."
 
---- test: exit code 1 ---
-$ npm test
-✖ sums every number (4.8643ms)
-✔ an empty list sums to zero (1.1317ms)
-ℹ tests 2
-ℹ pass 1
-ℹ fail 1
+  2. veritas-gate intercepts the end of the turn.
 
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+     decision: block
 
-  3 !== 6
+     veritas-gate: the task is NOT verified. Do not report it as complete.
 
-Required next steps:
-1. Read the output above and fix the underlying cause.
-2. Re-run the failing command yourself and paste its real output.
-3. Do NOT weaken, skip, delete or rewrite the checks, and do not edit
-   .veritas.yml to make them pass. Fixing the check instead of the code is a
-   failed task, not a completed one.
+     1 blocking check(s) failed (attempt 1 of 3):
+
+     --- test: exit code 1 ---
+     $ npm test
+     ...
+       AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+       3 !== 6
+
+  3. The agent gets the real assertion back, and fixes the cause.
+
+     -  for (let i = 0; i < numbers.length - 1; i += 1) {
+     +  for (let i = 0; i < numbers.length; i += 1) {
+
+  4. Now the turn is allowed to end.
+
+     decision: allow
+
+  5. Both runs are in the ledger, either way.
+
+     $ veritas status
+     2026-08-16 15:49:26Z  hook    passed  test  exit    0    915ms
+     2026-08-16 15:49:24Z  hook    failed  test  exit    1     1.0s
 ```
 
-That transcript comes from [`examples/failing-project`](examples/failing-project),
-which ships with a deliberately broken function so you can watch the gate work
-before you point it at anything you care about.
+That transcript is not a mockup. Run it yourself:
 
-Running the same checks by hand, on this repository:
-
+```bash
+node scripts/demo.mjs
 ```
-$ veritas verify
-[ pass ] typecheck 2.0s
-[ pass ] test 9.3s
-[ pass ] build 780ms (non-blocking)
 
-VERIFIED: all blocking checks passed.
-```
+It builds a throwaway project, drives the real binary, and cleans up after
+itself. [`docs/demo.md`](docs/demo.md) covers recording it.
 
 ## Install
 
@@ -103,30 +94,37 @@ node /path/to/veritas-gate/dist/veritas.mjs init
 ```
 
 That reads your project and writes a `.veritas.yml`. Look it over before you
-trust it.
+trust it. If you skip `init`, veritas falls back to auto-detection for Node,
+Python, Rust and Go. When it recognises nothing, it does nothing.
 
-If you skip `init` entirely, veritas falls back to auto-detection for Node,
-Python, Rust and Go. When it recognises nothing, it does nothing: no config, no
-opinion, no blocking.
-
-## Getting out
-
-Every gate needs a door that opens from the inside.
+And the way out, which always works:
 
 ```bash
 VERITAS_SKIP=1 claude
 ```
 
-That one variable disables everything, everywhere: the hook, `verify`, all of
-it. For a single command, `--skip` does the same:
+## Why veritas-gate?
 
-```bash
-node /path/to/veritas-gate/dist/veritas.mjs verify --skip
-```
+Claude Code gives you hooks. veritas-gate gives you a verification system.
 
-And if you want the reports without ever being stopped, put `dry_run: true` in
-your config. veritas will run the checks, write them down, and let the turn end
-anyway.
+The `Stop` hook has shipped for months, and a twenty-line shell script wired to
+it will block a turn when your tests fail. That script is the easy 20%. The
+table below is the other 80%, and it is the part you would otherwise write once
+per project and get subtly wrong each time.
+
+| | A hand-rolled Stop hook | veritas-gate |
+| --- | --- | --- |
+| Which checks run | hardcoded per project | auto-detected for Node, Python, Rust and Go, overridable in `.veritas.yml` |
+| Cost per turn | full suite, every single turn | skipped when no watched file changed since the last green run |
+| When it can't be satisfied | blocks until you kill the session | gives up after `max_attempts` with a visible `NOT VERIFIED` report, and stays given up until the checks pass |
+| When the hook itself breaks | a crash or a typo can block your session | any internal error fails open with a warning, proven by a test that injects a crashing runner |
+| When a tool isn't installed | looks like a failing check, blocks you | reported as "did not run", never blocks |
+| What the agent is told | an exit code | the real failing assertion, plus an explicit instruction not to weaken the test to make it green |
+| What you can audit later | nothing | append-only JSONL ledger: timestamps, commands, exit codes, durations, commit hashes |
+| Agent behaviour | unchanged | a bundled skill that forbids claiming "verified" or "tested" without showing the command output |
+
+None of this is impossible to build yourself. The point is that you would build
+it five times, and the fifth one would still fail open in the wrong direction.
 
 ## How the gate decides
 
@@ -167,18 +165,43 @@ anyway.
                                               '----------------'
 ```
 
-Two details in there matter more than they look.
+Two details there matter more than they look.
 
 veritas never gives up quietly. After `max_attempts` consecutive blocks it stops
-blocking, but it prints a `NOT VERIFIED` banner on the way out, so a session
-that ended unverified never looks like a session that ended clean. Once it has
-given up, it stays given up until the checks actually pass. An earlier version
-reset its counter there and produced an endless block-block-block-allow cycle,
-which is the fastest way to get a tool uninstalled.
+blocking, but it prints a `NOT VERIFIED` banner on the way out, so a session that
+ended unverified never looks like a session that ended clean. Once it has given
+up, it stays given up until the checks pass. An earlier version reset its counter
+there and produced an endless block-block-block-allow cycle, which is the fastest
+way to get a tool uninstalled.
+
+## Use cases
+
+**Long autonomous sessions.** You hand the agent a task and come back in forty
+minutes. Without a gate, you audit the whole thing yourself. With one, every
+turn that ended is a turn whose checks passed.
+
+**Slow test suites.** The change cache means the suite runs when something
+relevant changed, not on every turn. A turn that only edited a Markdown file
+costs nothing.
+
+**Polyglot and monorepo work.** Detection covers Node, Python, Rust and Go, and
+a session sitting in `packages/api/` walks up to the project's config instead of
+using whatever happens to be in the current directory.
+
+**Legacy code where coverage is thin.** veritas will tell you honestly that it
+gates claims, not correctness. What it does guarantee is that the suite you do
+have actually ran before anyone said "done".
+
+**Teams that need an audit trail.** Every check run lands in
+`.veritas/ledger.jsonl` with the commit it ran against, so "it was green on
+Tuesday" becomes checkable instead of remembered.
+
+**Anyone who has been burned once.** Which, if you use coding agents daily, is
+everyone.
 
 ## Configuration
 
-`.veritas.yml` in the project root. The full reference lives in
+`.veritas.yml` in the project root. Full reference in
 [`.veritas.example.yml`](.veritas.example.yml).
 
 ```yaml
@@ -253,12 +276,9 @@ Last 3 run(s) from .veritas/ledger.jsonl:
 No failures in this window.
 ```
 
-The last column is the commit the run happened on, so a green row can be tied
-back to a specific state of the tree. It shows dashes when the project isn't a
-git repository.
-
-The `.veritas/` directory ignores itself, so your own `.gitignore` stays
-untouched.
+The last column is the commit the run happened on, so a green row ties back to a
+specific state of the tree. It shows dashes when the project isn't a git
+repository.
 
 ## Where it looks for things
 
@@ -299,20 +319,41 @@ A verification tool that oversells itself has a credibility problem. So:
 - The consecutive-block limit is not documented anywhere. Claude Code's hooks
   reference states no maximum number of times a `Stop` hook may block in a row.
   It exposes a `loop_protection_blocked` flag on the payload instead, which
-  veritas honours. The `max_attempts` default of 3 is a number I picked to stay
-  well clear of trouble, not one I read in the docs. [`NOTES.md`](NOTES.md)
+  veritas honours. The `max_attempts` default of 3 is a number chosen to stay
+  well clear of trouble, not one read out of the docs. [`NOTES.md`](NOTES.md)
   section 3 has the details.
-- Nobody has run this inside a live Claude Code install yet. The hook protocol
-  is built against the documented schema and exercised end to end with JSON
-  fixtures and the real bundled binary, but the `claude` CLI wasn't available on
-  the machine this was written on, so plugin loading itself is unverified. If
-  you try it, an issue either way would be genuinely useful.
+- It only hooks `Stop`. Claude Code also exposes `TaskCompleted`, which can
+  block a task from being marked done. Gating that too is an obvious next step
+  and is not implemented yet.
 
 ## No network, no telemetry
 
 veritas makes no network requests and has no runtime dependencies. Everything it
 writes stays in `.veritas/` inside your project. The YAML parser is hand-written
 for exactly this reason.
+
+## Community
+
+Questions, ideas and "this broke on my setup" reports are all welcome.
+
+- [Discussions](https://github.com/YOUR-USERNAME/veritas-gate/discussions) for
+  questions, workflows and feature ideas
+- [Issues](https://github.com/YOUR-USERNAME/veritas-gate/issues) for bugs, with
+  your `.veritas.yml` and the output you got
+- [Good first issues](https://github.com/YOUR-USERNAME/veritas-gate/labels/good%20first%20issue)
+  if you want to contribute
+
+The single most useful contribution right now: run it against a real project and
+say what broke.
+
+<!-- Social proof. These render as zero until there is something to show, which
+     is why they live here rather than at the top of the page. Move them up once
+     the numbers argue for you.
+
+[![stars](https://img.shields.io/github/stars/YOUR-USERNAME/veritas-gate?style=social)](https://github.com/YOUR-USERNAME/veritas-gate/stargazers)
+[![forks](https://img.shields.io/github/forks/YOUR-USERNAME/veritas-gate?style=social)](https://github.com/YOUR-USERNAME/veritas-gate/network/members)
+[![contributors](https://img.shields.io/github/contributors/YOUR-USERNAME/veritas-gate)](https://github.com/YOUR-USERNAME/veritas-gate/graphs/contributors)
+-->
 
 ## Development
 

@@ -1,13 +1,18 @@
 {
   "name": "veritas-gate",
   "version": "0.1.0",
-  "description": "Your agent marks its own homework. veritas-gate grades it.",
+  "description": "AI agents can report that they're done. veritas-gate makes them prove it.",
   "keywords": [
     "claude-code",
     "claude-code-plugin",
-    "hooks",
+    "coding-agent",
+    "ai-agents",
+    "agentic-coding",
     "verification",
-    "agent"
+    "quality-gate",
+    "testing",
+    "hooks",
+    "developer-tools"
   ],
   "license": "MIT",
   "type": "module",

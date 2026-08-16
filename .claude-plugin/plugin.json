@@ -2,9 +2,9 @@
   "name": "veritas-gate",
   "displayName": "veritas-gate",
   "version": "0.1.0",
-  "description": "Your agent marks its own homework. veritas-gate grades it. Runs your configured checks before a turn is allowed to end, and blocks with the real failure output.",
+  "description": "AI agents can report that they're done. veritas-gate makes them prove it. Runs your configured checks before a turn is allowed to end, and blocks with the real failure output.",
   "license": "MIT",
-  "keywords": ["verification", "tests", "hooks", "quality"],
+  "keywords": ["verification", "testing", "quality-gate", "hooks", "coding-agents", "ai-agents"],
   "homepage": "https://github.com/YOUR-USERNAME/veritas-gate",
   "repository": "https://github.com/YOUR-USERNAME/veritas-gate"
 }
