@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join4, resolve } from "node:path";
+import { writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join5, resolve } from "node:path";
 
 // src/config.ts
 import { readFileSync, existsSync } from "node:fs";
@@ -933,6 +933,49 @@ function formatFailureDetail(result, lines = BLOCK_REASON_LINES) {
   const header = result.status === "timed-out" ? `--- ${result.name}: timed out after ${result.timeoutSeconds}s ---` : `--- ${result.name}: exit code ${result.exitCode ?? "unknown"} ---`;
   return [header, `$ ${result.command}`, output === "" ? "(no output captured)" : output, ""].join("\n");
 }
+function formatBlockReason(results, attempt, maxAttempts) {
+  const failures = results.filter(isBlockingFailure);
+  const lines = [
+    "veritas-gate: the task is NOT verified. Do not report it as complete.",
+    "",
+    `${failures.length} blocking check(s) failed (attempt ${attempt} of ${maxAttempts}):`,
+    ""
+  ];
+  for (const failure of failures) {
+    lines.push(formatFailureDetail(failure));
+  }
+  lines.push("Required next steps:");
+  lines.push("1. Read the output above and fix the underlying cause.");
+  lines.push("2. Re-run the failing command yourself and paste its real output.");
+  lines.push(
+    "3. Do NOT weaken, skip, delete or rewrite the checks, and do not edit .veritas.yml to make them pass. Fixing the check instead of the code is a failed task, not a completed one."
+  );
+  lines.push("");
+  lines.push(
+    `If you believe the failure is unrelated to your change, say so explicitly and explain why, rather than claiming success. To bypass verification deliberately, the user can set VERITAS_SKIP=1.`
+  );
+  return lines.join("\n");
+}
+function formatNotVerified(results, attempts, reason) {
+  const failures = results.filter(isBlockingFailure);
+  const cause = reason === "attempts" ? `veritas has blocked ${attempts} time(s) in a row and has reached max_attempts.` : "Claude Code's loop protection has engaged, so veritas will not block again.";
+  const lines = [
+    "=============================================",
+    "  veritas-gate: NOT VERIFIED - GIVING UP",
+    "=============================================",
+    "",
+    cause,
+    "It is letting this turn end, but the work is NOT verified.",
+    "",
+    `Still failing: ${failures.map((result) => result.name).join(", ") || "(no blocking checks ran)"}`,
+    ""
+  ];
+  for (const failure of failures) {
+    lines.push(formatFailureDetail(failure, 20));
+  }
+  lines.push("Run `veritas verify` to see the full output, or check .veritas/ledger.jsonl.");
+  return lines.join("\n");
+}
 function formatStatus(entries, root) {
   if (entries.length === 0) {
     return [
@@ -961,6 +1004,303 @@ function formatStatus(entries, root) {
   );
   return `${lines.join("\n")}
 `;
+}
+
+// src/state.ts
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, readdirSync, statSync as statSync2 } from "node:fs";
+import { join as join4, relative, sep } from "node:path";
+import { createHash } from "node:crypto";
+var STATE_FILENAME = "state.json";
+var EMPTY_STATE = {
+  version: 1,
+  sessions: {},
+  lastGreenFingerprint: null,
+  lastGreenAt: null
+};
+var SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
+function statePath(root) {
+  return join4(veritasDir(root), STATE_FILENAME);
+}
+function readState(root) {
+  let raw;
+  try {
+    raw = readFileSync3(statePath(root), "utf8");
+  } catch {
+    return EMPTY_STATE;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return EMPTY_STATE;
+    const candidate = parsed;
+    const sessions = typeof candidate.sessions === "object" && candidate.sessions !== null ? candidate.sessions : {};
+    return {
+      version: 1,
+      sessions,
+      lastGreenFingerprint: typeof candidate.lastGreenFingerprint === "string" ? candidate.lastGreenFingerprint : null,
+      lastGreenAt: typeof candidate.lastGreenAt === "string" ? candidate.lastGreenAt : null
+    };
+  } catch {
+    return EMPTY_STATE;
+  }
+}
+function writeState(root, state) {
+  const cutoff = Date.now() - SESSION_TTL_MS;
+  const sessions = {};
+  for (const [id, session] of Object.entries(state.sessions)) {
+    const updatedAt = Date.parse(session.updated);
+    if (Number.isNaN(updatedAt) || updatedAt >= cutoff) {
+      sessions[id] = session;
+    }
+  }
+  try {
+    ensureVeritasDir(root);
+    writeFileSync2(statePath(root), `${JSON.stringify({ ...state, sessions }, null, 2)}
+`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+function blocksFor(state, sessionId) {
+  return state.sessions[sessionId]?.blocks ?? 0;
+}
+function withBlock(state, sessionId) {
+  return {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      [sessionId]: { blocks: blocksFor(state, sessionId) + 1, updated: (/* @__PURE__ */ new Date()).toISOString() }
+    }
+  };
+}
+function withTouch(state, sessionId) {
+  return {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      [sessionId]: { blocks: blocksFor(state, sessionId), updated: (/* @__PURE__ */ new Date()).toISOString() }
+    }
+  };
+}
+function withReset(state, sessionId, fingerprint2) {
+  return {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      [sessionId]: { blocks: 0, updated: (/* @__PURE__ */ new Date()).toISOString() }
+    },
+    lastGreenFingerprint: fingerprint2,
+    lastGreenAt: fingerprint2 === null ? state.lastGreenAt : (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function globToRegExp(pattern) {
+  let source = "";
+  let index = 0;
+  while (index < pattern.length) {
+    const char = pattern[index];
+    if (char === "*") {
+      const isDouble = pattern[index + 1] === "*";
+      if (isDouble) {
+        if (pattern[index + 2] === "/") {
+          source += "(?:[^/]*/)*";
+          index += 3;
+          continue;
+        }
+        source += ".*";
+        index += 2;
+        continue;
+      }
+      source += "[^/]*";
+      index += 1;
+      continue;
+    }
+    if (char === "?") {
+      source += "[^/]";
+      index += 1;
+      continue;
+    }
+    source += char.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    index += 1;
+  }
+  return new RegExp(`^${source}$`);
+}
+function matchesAny(relativePath, patterns) {
+  const normalized = relativePath.split(sep).join("/");
+  return patterns.some((pattern) => globToRegExp(pattern).test(normalized));
+}
+var IGNORED_DIRECTORIES = /* @__PURE__ */ new Set([
+  ".git",
+  ".veritas",
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  "target",
+  "vendor",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".next",
+  ".nuxt",
+  ".cache",
+  ".idea",
+  ".vscode"
+]);
+var MAX_SCANNED_FILES = 2e4;
+function fingerprint(root, patterns) {
+  if (patterns.length === 0) return null;
+  const hash = createHash("sha256");
+  let scanned = 0;
+  let matched = 0;
+  let overflowed = false;
+  const walk = (directory) => {
+    if (overflowed) return;
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
+      if (overflowed) return;
+      const full = join4(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (IGNORED_DIRECTORIES.has(entry.name)) continue;
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      scanned += 1;
+      if (scanned > MAX_SCANNED_FILES) {
+        overflowed = true;
+        return;
+      }
+      const relativePath = relative(root, full);
+      if (!matchesAny(relativePath, patterns)) continue;
+      try {
+        const stats = statSync2(full);
+        hash.update(`${relativePath.split(sep).join("/")}\0${stats.size}\0${Math.floor(stats.mtimeMs)}
+`);
+        matched += 1;
+      } catch {
+      }
+    }
+  };
+  walk(root);
+  if (overflowed) return null;
+  if (matched === 0) return null;
+  return hash.digest("hex");
+}
+
+// src/hook.ts
+function allow(systemMessage) {
+  const output = { hookSpecificOutput: { hookEventName: "Stop", decision: "allow" } };
+  if (systemMessage !== void 0) output.systemMessage = systemMessage;
+  return output;
+}
+function block(reason, systemMessage) {
+  return {
+    hookSpecificOutput: { hookEventName: "Stop", decision: "block", reason },
+    decision: "block",
+    reason,
+    systemMessage
+  };
+}
+function skipRequested(argv, env) {
+  if (argv.includes("--skip")) return true;
+  const value = env["VERITAS_SKIP"];
+  return value !== void 0 && value !== "" && value !== "0" && value.toLowerCase() !== "false";
+}
+async function handleHook(rawPayload, context) {
+  try {
+    return await decide(rawPayload, context);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return allow(`veritas-gate failed and let this turn through: ${detail}`);
+  }
+}
+async function decide(rawPayload, context) {
+  let payload = {};
+  if (rawPayload.trim() !== "") {
+    try {
+      const parsed = JSON.parse(rawPayload);
+      if (typeof parsed === "object" && parsed !== null) {
+        payload = parsed;
+      }
+    } catch {
+      return allow("veritas-gate could not parse the hook payload and let this turn through.");
+    }
+  }
+  const root = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
+  const sessionId = typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : "default";
+  const run = context.runner ?? runChecks;
+  if (skipRequested(context.argv, context.env)) {
+    return allow();
+  }
+  const loopProtectionEngaged = payload.loop_protection_blocked === true || payload.stop_hook_active === true;
+  const loaded = loadConfig(root);
+  if (loaded.config.checks.length === 0) {
+    return allow(
+      loaded.warnings.length > 0 ? `veritas-gate: ${loaded.warnings.join("; ")}` : void 0
+    );
+  }
+  if (loaded.config.dryRun) {
+    const results2 = await run(loaded.config.checks, { cwd: root, env: context.env });
+    recordResults(root, results2, "hook");
+    const failures2 = results2.filter(isBlockingFailure);
+    return allow(
+      failures2.length === 0 ? "veritas-gate (dry_run): all blocking checks passed." : `veritas-gate (dry_run): would have blocked. Failing: ${failures2.map((r) => r.name).join(", ")}`
+    );
+  }
+  const state = readState(root);
+  const attemptsSoFar = blocksFor(state, sessionId);
+  if (loopProtectionEngaged || attemptsSoFar >= loaded.config.maxAttempts) {
+    const results2 = await run(loaded.config.checks.filter((check) => check.blocking), {
+      cwd: root,
+      env: context.env,
+      stopOnFirstBlockingFailure: false
+    });
+    recordResults(root, results2, "hook");
+    const failures2 = results2.filter(isBlockingFailure);
+    if (failures2.length === 0) {
+      writeState(root, withReset(state, sessionId, fingerprint(root, loaded.config.watch)));
+      return allow("veritas-gate: all blocking checks passed.");
+    }
+    writeState(root, withTouch(state, sessionId));
+    return allow(formatNotVerified(results2, attemptsSoFar, loopProtectionEngaged ? "loop-protection" : "attempts"));
+  }
+  const current = fingerprint(root, loaded.config.watch);
+  if (current !== null && state.lastGreenFingerprint === current) {
+    return allow();
+  }
+  const blockingChecks = loaded.config.checks.filter((check) => check.blocking);
+  if (blockingChecks.length === 0) {
+    return allow();
+  }
+  const results = await run(blockingChecks, {
+    cwd: root,
+    env: context.env,
+    stopOnFirstBlockingFailure: true
+  });
+  recordResults(root, results, "hook");
+  const failures = results.filter(isBlockingFailure);
+  if (failures.length === 0) {
+    writeState(root, withReset(state, sessionId, current));
+    const infrastructure = results.filter(isInfrastructureProblem);
+    return allow(
+      infrastructure.length === 0 ? void 0 : `veritas-gate: verified, but ${infrastructure.map((r) => r.name).join(", ")} could not run.`
+    );
+  }
+  const attempt = attemptsSoFar + 1;
+  writeState(root, withBlock(state, sessionId));
+  return block(
+    formatBlockReason(results, attempt, loaded.config.maxAttempts),
+    `veritas-gate blocked this turn (attempt ${attempt}/${loaded.config.maxAttempts}): ${failures.map((result) => result.name).join(", ")} failing. Set VERITAS_SKIP=1 to bypass.`
+  );
 }
 
 // src/cli.ts
@@ -997,7 +1337,7 @@ var defaultIo = {
   cwd: process.cwd(),
   stdin: readStdin
 };
-function skipRequested(argv, env) {
+function skipRequested2(argv, env) {
   if (argv.includes("--skip")) return true;
   const value = env["VERITAS_SKIP"];
   return value !== void 0 && value !== "" && value !== "0" && value.toLowerCase() !== "false";
@@ -1024,9 +1364,9 @@ async function commandInit(argv, io) {
     return 1;
   }
   const { config, detection } = initialConfig(root);
-  const target = join4(root, CONFIG_FILENAMES[0]);
+  const target = join5(root, CONFIG_FILENAMES[0]);
   try {
-    writeFileSync2(target, renderConfig(config, detection), "utf8");
+    writeFileSync3(target, renderConfig(config, detection), "utf8");
   } catch (error) {
     io.stderr(`veritas: could not write ${target}: ${error instanceof Error ? error.message : String(error)}
 `);
@@ -1056,7 +1396,7 @@ Detected: ${detection.ecosystems.join(", ")}
 }
 async function commandVerify(argv, io) {
   const root = resolveRoot(argv, io);
-  if (skipRequested(argv, io.env)) {
+  if (skipRequested2(argv, io.env)) {
     io.stdout("veritas: skipped (VERITAS_SKIP or --skip). Nothing was verified.\n");
     return 0;
   }
@@ -1095,8 +1435,12 @@ async function commandStatus(argv, io) {
   io.stdout(formatStatus(readEntries(root, limit), root));
   return 0;
 }
-async function commandHook(_argv, _io) {
-  throw new Error("the hook handler is not implemented yet");
+async function commandHook(argv, io) {
+  const payload = await io.stdin();
+  const output = await handleHook(payload, { argv, env: io.env, fallbackCwd: resolveRoot(argv, io) });
+  io.stdout(`${JSON.stringify(output)}
+`);
+  return 0;
 }
 async function main(argv, io = defaultIo) {
   const command = argv[0];
@@ -1145,5 +1489,5 @@ export {
   VERSION,
   main,
   readStdin,
-  skipRequested
+  skipRequested2 as skipRequested
 };

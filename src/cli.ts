@@ -7,6 +7,7 @@ import { initialConfig, renderConfig, loadConfig, CONFIG_FILENAMES, findConfigFi
 import { runChecks, isBlockingFailure } from "./runner.ts";
 import { recordResults, readEntries } from "./ledger.ts";
 import { formatVerifyReport, formatStatus, noChecksMessage } from "./format.ts";
+import { handleHook } from "./hook.ts";
 
 export const VERSION = "0.1.0";
 
@@ -186,8 +187,15 @@ async function commandStatus(argv: readonly string[], io: Io): Promise<number> {
 // hook
 // ---------------------------------------------------------------------------
 
-async function commandHook(_argv: readonly string[], _io: Io): Promise<number> {
-  throw new Error("the hook handler is not implemented yet");
+async function commandHook(argv: readonly string[], io: Io): Promise<number> {
+  const payload = await io.stdin();
+  const output = await handleHook(payload, { argv, env: io.env, fallbackCwd: resolveRoot(argv, io) });
+
+  io.stdout(`${JSON.stringify(output)}\n`);
+
+  // Always 0. A non-zero exit from a Stop hook is itself a block signal, so
+  // exiting non-zero on an internal error would block by accident.
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
