@@ -1094,11 +1094,7 @@ function formatNotVerified(results, attempts, reason) {
 }
 function formatStatus(entries, root) {
   if (entries.length === 0) {
-    return [
-      `No runs recorded yet in ${root}/.veritas/ledger.jsonl.`,
-      'Run "veritas verify" to record one.',
-      ""
-    ].join("\n");
+    return [`No runs recorded yet in ${ledgerPath(root)}.`, 'Run "veritas verify" to record one.', ""].join("\n");
   }
   const lines = [`Last ${entries.length} run(s) from .veritas/ledger.jsonl:`, ""];
   const statusColumn = Math.max(...entries.map((entry) => entry.status.length));

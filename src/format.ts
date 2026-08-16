@@ -5,7 +5,7 @@
 
 import type { CheckResult } from "./runner.ts";
 import { isBlockingFailure, isInfrastructureProblem } from "./runner.ts";
-import { combinedOutput, truncateOutput, type LedgerEntry } from "./ledger.ts";
+import { combinedOutput, truncateOutput, ledgerPath, type LedgerEntry } from "./ledger.ts";
 import type { ConfigSource } from "./config.ts";
 
 /** Lines of real output included in a block reason. */
@@ -205,11 +205,9 @@ export function formatNotVerified(results: readonly CheckResult[], attempts: num
 /** The table `veritas status` prints. */
 export function formatStatus(entries: readonly LedgerEntry[], root: string): string {
   if (entries.length === 0) {
-    return [
-      `No runs recorded yet in ${root}/.veritas/ledger.jsonl.`,
-      'Run "veritas verify" to record one.',
-      "",
-    ].join("\n");
+    // ledgerPath rather than string concatenation, so the separators match the
+    // platform instead of mixing "\" and "/" in the same path.
+    return [`No runs recorded yet in ${ledgerPath(root)}.`, 'Run "veritas verify" to record one.', ""].join("\n");
   }
 
   const lines: string[] = [`Last ${entries.length} run(s) from .veritas/ledger.jsonl:`, ""];
