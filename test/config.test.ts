@@ -233,6 +233,23 @@ test("a malformed package.json does not throw", () => {
   assert.deepEqual(detectProject(root).ecosystems, []);
 });
 
+test("a package.json with a UTF-8 BOM is still detected", () => {
+  const root = makeProject({
+    "package.json": `﻿${JSON.stringify({ scripts: { test: "node --test" } })}`,
+  });
+
+  assert.deepEqual(detectProject(root).ecosystems, ["node"]);
+  assert.deepEqual(names(detectProject(root).checks), ["test"]);
+});
+
+test("a .veritas.yml with a UTF-8 BOM is still parsed", () => {
+  const root = makeProject({ ".veritas.yml": "﻿checks:\n  - name: t\n    run: echo hi\n" });
+  const loaded = loadConfig(root);
+
+  assert.equal(loaded.source, "file");
+  assert.deepEqual(names(loaded.config.checks), ["t"]);
+});
+
 // --- loading ---------------------------------------------------------------
 
 test("loadConfig reads .veritas.yml when present", () => {

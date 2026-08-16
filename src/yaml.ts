@@ -62,8 +62,9 @@ function stripComment(raw: string): string {
 
 function toLines(source: string): Line[] {
   const lines: Line[] = [];
+  const withoutBom = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
 
-  source.split(/\r?\n/).forEach((raw, index) => {
+  withoutBom.split(/\r?\n/).forEach((raw, index) => {
     const number = index + 1;
 
     if (raw.includes("\t")) {

@@ -70,9 +70,19 @@ function isRecord(value: YamlValue): value is Record<string, YamlValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Removes a leading UTF-8 byte order mark.
+ *
+ * Editors and shells on Windows write BOMs freely; a BOM in front of `{` makes
+ * JSON.parse throw, which would silently disable project detection.
+ */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 function readJson(path: string): Record<string, unknown> | undefined {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const parsed: unknown = JSON.parse(stripBom(readFileSync(path, "utf8")));
     return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
   } catch {
     return undefined;
@@ -81,7 +91,7 @@ function readJson(path: string): Record<string, unknown> | undefined {
 
 function readText(path: string): string | undefined {
   try {
-    return readFileSync(path, "utf8");
+    return stripBom(readFileSync(path, "utf8"));
   } catch {
     return undefined;
   }
@@ -417,7 +427,7 @@ export function loadConfig(root: string): LoadedConfig {
 
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = stripBom(readFileSync(path, "utf8"));
   } catch (error) {
     return {
       config: DEFAULT_CONFIG,
