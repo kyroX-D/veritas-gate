@@ -8,9 +8,9 @@ __   __  ___  _ __ (_)| |_   __ _  ___         __ _   __ _ | |_   ___
                 Agents report. veritas-gate verifies.
 ```
 
-[![CI](https://github.com/YOUR-USERNAME/veritas-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR-USERNAME/veritas-gate/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/YOUR-USERNAME/veritas-gate?sort=semver)](https://github.com/YOUR-USERNAME/veritas-gate/releases)
-[![license](https://img.shields.io/github/license/YOUR-USERNAME/veritas-gate)](LICENSE)
+[![CI](https://github.com/kyroX-D/veritas-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/kyroX-D/veritas-gate/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/kyroX-D/veritas-gate?sort=semver)](https://github.com/kyroX-D/veritas-gate/releases)
+[![license](https://img.shields.io/github/license/kyroX-D/veritas-gate)](LICENSE)
 [![node](https://img.shields.io/badge/node-20.11%2B-brightgreen)](package.json)
 [![runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
 
@@ -80,7 +80,7 @@ itself. [`docs/demo.md`](docs/demo.md) covers recording it.
 Thirty seconds, no build step. The bundle in `dist/` is committed on purpose.
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/veritas-gate
+git clone https://github.com/kyroX-D/veritas-gate
 ```
 
 ```bash
@@ -336,11 +336,11 @@ for exactly this reason.
 
 Questions, ideas and "this broke on my setup" reports are all welcome.
 
-- [Discussions](https://github.com/YOUR-USERNAME/veritas-gate/discussions) for
+- [Discussions](https://github.com/kyroX-D/veritas-gate/discussions) for
   questions, workflows and feature ideas
-- [Issues](https://github.com/YOUR-USERNAME/veritas-gate/issues) for bugs, with
+- [Issues](https://github.com/kyroX-D/veritas-gate/issues) for bugs, with
   your `.veritas.yml` and the output you got
-- [Good first issues](https://github.com/YOUR-USERNAME/veritas-gate/labels/good%20first%20issue)
+- [Good first issues](https://github.com/kyroX-D/veritas-gate/labels/good%20first%20issue)
   if you want to contribute
 
 The single most useful contribution right now: run it against a real project and
@@ -350,9 +350,9 @@ say what broke.
      is why they live here rather than at the top of the page. Move them up once
      the numbers argue for you.
 
-[![stars](https://img.shields.io/github/stars/YOUR-USERNAME/veritas-gate?style=social)](https://github.com/YOUR-USERNAME/veritas-gate/stargazers)
-[![forks](https://img.shields.io/github/forks/YOUR-USERNAME/veritas-gate?style=social)](https://github.com/YOUR-USERNAME/veritas-gate/network/members)
-[![contributors](https://img.shields.io/github/contributors/YOUR-USERNAME/veritas-gate)](https://github.com/YOUR-USERNAME/veritas-gate/graphs/contributors)
+[![stars](https://img.shields.io/github/stars/kyroX-D/veritas-gate?style=social)](https://github.com/kyroX-D/veritas-gate/stargazers)
+[![forks](https://img.shields.io/github/forks/kyroX-D/veritas-gate?style=social)](https://github.com/kyroX-D/veritas-gate/network/members)
+[![contributors](https://img.shields.io/github/contributors/kyroX-D/veritas-gate)](https://github.com/kyroX-D/veritas-gate/graphs/contributors)
 -->
 
 ## Development
