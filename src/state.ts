@@ -185,9 +185,23 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${source}$`);
 }
 
-export function matchesAny(relativePath: string, patterns: readonly string[]): boolean {
+/**
+ * Compiles a pattern list once.
+ *
+ * The fingerprint walk tests every file against every pattern, so compiling
+ * inside the loop meant tens of thousands of RegExp constructions per run.
+ */
+export function compileGlobs(patterns: readonly string[]): RegExp[] {
+  return patterns.map(globToRegExp);
+}
+
+export function matchesCompiled(relativePath: string, compiled: readonly RegExp[]): boolean {
   const normalized = relativePath.split(sep).join("/");
-  return patterns.some((pattern) => globToRegExp(pattern).test(normalized));
+  return compiled.some((regex) => regex.test(normalized));
+}
+
+export function matchesAny(relativePath: string, patterns: readonly string[]): boolean {
+  return matchesCompiled(relativePath, compileGlobs(patterns));
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +245,7 @@ const MAX_SCANNED_FILES = 20_000;
 export function fingerprint(root: string, patterns: readonly string[]): string | null {
   if (patterns.length === 0) return null;
 
+  const compiled = compileGlobs(patterns);
   const hash = createHash("sha256");
   let scanned = 0;
   let matched = 0;
@@ -266,7 +281,7 @@ export function fingerprint(root: string, patterns: readonly string[]): string |
       }
 
       const relativePath = relative(root, full);
-      if (!matchesAny(relativePath, patterns)) continue;
+      if (!matchesCompiled(relativePath, compiled)) continue;
 
       try {
         const stats = statSync(full);

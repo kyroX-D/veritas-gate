@@ -12,7 +12,7 @@
 //   - `reason` is the text shown to Claude; `systemMessage` is shown to the user.
 //   - veritas never sets `continue: false` — that would end the session outright.
 
-import { loadConfig } from "./config.ts";
+import { loadConfig, isBypassed, findProjectRoot } from "./config.ts";
 import { runChecks, isBlockingFailure, isInfrastructureProblem, type CheckResult } from "./runner.ts";
 import { recordResults } from "./ledger.ts";
 import { formatBlockReason, formatNotVerified, formatResultLine } from "./format.ts";
@@ -75,12 +75,6 @@ function block(reason: string, systemMessage: string): HookOutput {
   };
 }
 
-function skipRequested(argv: readonly string[], env: NodeJS.ProcessEnv): boolean {
-  if (argv.includes("--skip")) return true;
-  const value = env["VERITAS_SKIP"];
-  return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
-}
-
 /**
  * Handles one Stop-hook invocation.
  *
@@ -111,12 +105,15 @@ async function decide(rawPayload: string, context: HookContext): Promise<HookOut
     }
   }
 
-  const root = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
+  // The payload's cwd is wherever the session sits, which may be a
+  // subdirectory; the config and the ledger belong at the project root.
+  const startDir = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
+  const root = findProjectRoot(startDir);
   const sessionId = typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : "default";
   const run = context.runner ?? runChecks;
 
   // --- 2. Unconditional pass-throughs --------------------------------------
-  if (skipRequested(context.argv, context.env)) {
+  if (isBypassed(context.argv, context.env)) {
     return allow();
   }
 

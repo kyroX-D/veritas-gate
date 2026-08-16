@@ -37,17 +37,26 @@ interface Line {
 
 const KEY_PATTERN = /^([A-Za-z0-9_.\-$]+)\s*:(?:\s+(.*))?$/;
 
-/** Removes a trailing `# comment`, respecting quoted strings. */
+/**
+ * Removes a trailing `# comment`, respecting quoted strings.
+ *
+ * A quote character only opens a string when it starts a scalar, meaning at the
+ * beginning of the line or after whitespace. Treating every apostrophe as a
+ * delimiter made `run: echo it's fine  # note` swallow the comment into the
+ * command.
+ */
 function stripComment(raw: string): string {
   let inSingle = false;
   let inDouble = false;
 
+  const startsScalar = (index: number): boolean => index === 0 || /\s/.test(raw[index - 1] ?? "");
+
   for (let i = 0; i < raw.length; i += 1) {
     const char = raw[i];
 
-    if (char === "'" && !inDouble) {
+    if (char === "'" && !inDouble && (inSingle || startsScalar(i))) {
       inSingle = !inSingle;
-    } else if (char === '"' && !inSingle) {
+    } else if (char === '"' && !inSingle && (inDouble || startsScalar(i))) {
       inDouble = !inDouble;
     } else if (char === "#" && !inSingle && !inDouble) {
       // Only a `#` at the start or preceded by whitespace opens a comment.
@@ -88,6 +97,89 @@ function toLines(source: string): Line[] {
   return lines;
 }
 
+/**
+ * Unescapes a double-quoted YAML scalar body.
+ *
+ * Without this, a command such as `node -e "x"` written by `veritas init` as
+ * `run: "node -e \"x\""` parses back with literal backslashes and then runs as
+ * a different command than the one configured.
+ */
+function unescapeDoubleQuoted(body: string, line: number): string {
+  let result = "";
+
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body[i] as string;
+
+    if (char !== "\\") {
+      result += char;
+      continue;
+    }
+
+    const next = body[i + 1];
+    i += 1;
+
+    switch (next) {
+      case '"':
+        result += '"';
+        break;
+      case "\\":
+        result += "\\";
+        break;
+      case "/":
+        result += "/";
+        break;
+      case "n":
+        result += "\n";
+        break;
+      case "r":
+        result += "\r";
+        break;
+      case "t":
+        result += "\t";
+        break;
+      case "0":
+        result += "\0";
+        break;
+      case "u": {
+        const hex = body.slice(i + 1, i + 5);
+        if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+          throw new YamlError("invalid \\u escape in a double-quoted string", line);
+        }
+        result += String.fromCharCode(Number.parseInt(hex, 16));
+        i += 4;
+        break;
+      }
+      case undefined:
+        throw new YamlError("a double-quoted string ends with a dangling backslash", line);
+      default:
+        throw new YamlError(`unsupported escape \\${next} in a double-quoted string`, line);
+    }
+  }
+
+  return result;
+}
+
+/** Finds the index of the closing quote, honouring escapes. */
+function closingQuote(text: string, quote: '"' | "'"): number {
+  for (let i = 1; i < text.length; i += 1) {
+    if (quote === '"' && text[i] === "\\") {
+      i += 1;
+      continue;
+    }
+
+    if (text[i] === quote) {
+      // In single-quoted YAML, '' is an escaped quote rather than the end.
+      if (quote === "'" && text[i + 1] === "'") {
+        i += 1;
+        continue;
+      }
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 function parseScalar(raw: string, line: number): YamlValue {
   const text = raw.trim();
 
@@ -95,11 +187,20 @@ function parseScalar(raw: string, line: number): YamlValue {
     return null;
   }
 
-  if (
-    (text.startsWith('"') && text.endsWith('"') && text.length >= 2) ||
-    (text.startsWith("'") && text.endsWith("'") && text.length >= 2)
-  ) {
-    return text.slice(1, -1);
+  if (text.startsWith('"') || text.startsWith("'")) {
+    const quote = text[0] as '"' | "'";
+    const end = closingQuote(text, quote);
+
+    if (end === -1) {
+      throw new YamlError("unterminated quoted string", line);
+    }
+
+    if (text.slice(end + 1).trim() !== "") {
+      throw new YamlError("unexpected content after a quoted string", line);
+    }
+
+    const body = text.slice(1, end);
+    return quote === '"' ? unescapeDoubleQuoted(body, line) : body.replaceAll("''", "'");
   }
 
   // Empty flow collections are the idiomatic way to write "nothing here" and

@@ -162,8 +162,18 @@ class TailBuffer {
 }
 
 /**
- * Kills a process tree. On Windows the shell child does not forward signals to
- * its own children, so the whole tree has to go through taskkill.
+ * POSIX only: a check runs in its own process group so a timeout can kill the
+ * whole group. Without this, killing `sh -c "npm test"` reaps the shell and
+ * leaves npm and node running, which is exactly the runaway process a timeout
+ * exists to stop. On Windows the equivalent is taskkill /T.
+ */
+const DETACH_CHECKS = platform !== "win32";
+
+/**
+ * Kills a check's entire process tree.
+ *
+ * Neither platform propagates a signal from the shell to its children on its
+ * own, so each needs its own mechanism.
  */
 function killTree(pid: number | undefined): void {
   if (pid === undefined) return;
@@ -178,9 +188,14 @@ function killTree(pid: number | undefined): void {
   }
 
   try {
-    process.kill(pid, "SIGKILL");
+    // Negative pid targets the process group created by detached: true.
+    process.kill(-pid, "SIGKILL");
   } catch {
-    // Already gone.
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
   }
 }
 
@@ -222,6 +237,7 @@ export function runCheck(check: Check, options: RunOptions): Promise<CheckResult
           VERITAS_SKIP: "1",
         },
         windowsHide: true,
+        detached: DETACH_CHECKS,
       });
     } catch (error) {
       stderr.append(error instanceof Error ? error.message : String(error));

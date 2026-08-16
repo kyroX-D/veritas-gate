@@ -21,7 +21,7 @@ the failing assertion rather than a scolding.
 ## Install
 
 ```bash
-git clone https://github.com/veritas-gate/veritas-gate
+git clone https://github.com/YOUR-USERNAME/veritas-gate
 ```
 
 ```bash
@@ -168,12 +168,28 @@ self-defeating.
 - **If `.veritas/state.json` cannot be written**, the attempt counter cannot
   advance, so veritas would keep blocking up to Claude Code's own loop
   protection rather than escalating at `max_attempts`.
-- **Windows process-tree kills go through `taskkill`.** A check that spawns
-  detached grandchildren may leave them running after a timeout.
+- **A timeout kills the check's process group**, via `taskkill /T` on Windows
+  and a process-group signal elsewhere. A check that deliberately detaches a
+  grandchild from that group can still outlive the timeout.
+- **The YAML parser understands a subset**, not the whole language. Block
+  mappings, sequences, quoted and plain scalars and comments are supported;
+  anchors, multi-line block scalars and non-empty flow collections are rejected
+  with a line number rather than mis-parsed.
 - **Not tested against a live Claude Code installation.** The hook protocol is
   implemented against the documented schema and exercised end-to-end via JSON
   fixtures and the real bundled binary, but the `claude` CLI was not available
   on the machine where this was built, so plugin loading itself is unverified.
+
+## Where veritas looks
+
+Commands that read an existing configuration (`verify`, `status`, the hook) walk
+up from the current directory to the nearest `.veritas.yml`, falling back to the
+nearest git repository. A session sitting in `src/` therefore uses the project's
+config and writes one ledger at the project root, rather than scattering
+`.veritas/` directories through the tree.
+
+`veritas init` is the exception: it writes where you ran it, because
+"initialise here" should mean here.
 
 ## No network, no telemetry
 
@@ -188,6 +204,10 @@ native type stripping.
 ```bash
 npm install && npm run typecheck && npm test && npm run build
 ```
+
+veritas gates its own development: this repository has a `.veritas.yml`, and CI
+runs the suite on Linux, macOS and Windows and fails if the committed `dist/`
+bundle does not match `src/`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -423,14 +423,27 @@ test("a crash leaves no block recorded against the session", async () => {
   assert.equal(blocksFor(readState(root), "session-1"), 0);
 });
 
-test("a pointing-at-nowhere root does not block", async () => {
+test("a cwd below the project root still finds the project's config", async () => {
   const root = makeRoot(config(FAILING));
-  const brokenRoot = join(root, "does", "not", "exist");
+  const subdirectory = join(root, "src", "deep");
+  mkdirSync(subdirectory, { recursive: true });
 
-  const output = await handleHook(payload(brokenRoot), {
+  // Claude Code's cwd is wherever the session sits. veritas walks up to the
+  // config rather than looking only where it was invoked.
+  const output = await call(payload(root, { cwd: subdirectory }), root);
+  assert.equal(decisionOf(output), "block");
+
+  assert.equal(readEntries(root).length, 1, "the ledger belongs at the project root, not the subdirectory");
+});
+
+test("a cwd that does not exist and has no project above it does not block", async () => {
+  // A bare temp directory with no config and no .git anywhere above it.
+  const nowhere = join(mkdtempSync(join(tmpdir(), "veritas-nowhere-")), "does", "not", "exist");
+
+  const output = await handleHook(payload(nowhere, { cwd: nowhere }), {
     argv: [],
     env: baseEnv(),
-    fallbackCwd: brokenRoot,
+    fallbackCwd: nowhere,
   });
 
   assert.equal(decisionOf(output), "allow");

@@ -5,6 +5,6 @@
   "description": "Your agent doesn't get to say \"done\" without proof. Runs your tests, typecheck and lint before a turn is allowed to end.",
   "license": "MIT",
   "keywords": ["verification", "tests", "hooks", "quality"],
-  "homepage": "https://github.com/veritas-gate/veritas-gate",
-  "repository": "https://github.com/veritas-gate/veritas-gate"
+  "homepage": "https://github.com/YOUR-USERNAME/veritas-gate",
+  "repository": "https://github.com/YOUR-USERNAME/veritas-gate"
 }

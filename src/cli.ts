@@ -1,9 +1,18 @@
 // Entry point: init | verify | status | hook.
 
-import { writeFileSync } from "node:fs";
+import { writeFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
-import { initialConfig, renderConfig, loadConfig, CONFIG_FILENAMES, findConfigFile } from "./config.ts";
+import {
+  initialConfig,
+  renderConfig,
+  loadConfig,
+  isBypassed,
+  findProjectRoot,
+  CONFIG_FILENAMES,
+  findConfigFile,
+} from "./config.ts";
 import { runChecks, isBlockingFailure } from "./runner.ts";
 import { recordResults, readEntries } from "./ledger.ts";
 import { formatVerifyReport, formatStatus, noChecksMessage } from "./format.ts";
@@ -56,11 +65,71 @@ const defaultIo: Io = {
   stdin: readStdin,
 };
 
-/** True when the user has asked veritas to stand down. */
-export function skipRequested(argv: readonly string[], env: NodeJS.ProcessEnv): boolean {
-  if (argv.includes("--skip")) return true;
-  const value = env["VERITAS_SKIP"];
-  return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
+/** Flags that consume the following argument. */
+const VALUE_FLAGS = new Set(["-C", "--cwd", "--limit", "-n"]);
+
+/** Every flag the CLI understands, so a typo fails loudly. */
+const KNOWN_FLAGS = new Set([
+  "-h",
+  "--help",
+  "-v",
+  "--version",
+  "-C",
+  "--cwd",
+  "--skip",
+  "--force",
+  "--limit",
+  "-n",
+]);
+
+/**
+ * Splits argv into a subcommand and its arguments, allowing flags on either
+ * side of the subcommand so that `veritas -C dir verify` works.
+ */
+export function splitArgv(argv: readonly string[]): { command: string | undefined; args: string[] } {
+  let command: string | undefined;
+  const args: string[] = [];
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i] as string;
+
+    if (token.startsWith("-")) {
+      args.push(token);
+
+      if (VALUE_FLAGS.has(token) && argv[i + 1] !== undefined) {
+        args.push(argv[i + 1] as string);
+        i += 1;
+      }
+      continue;
+    }
+
+    if (command === undefined) {
+      command = token;
+      continue;
+    }
+
+    args.push(token);
+  }
+
+  return { command, args };
+}
+
+/**
+ * Rejects unrecognised flags.
+ *
+ * A silently ignored `--skpi` would look like a bypass that did not happen,
+ * which is the worst possible way for a safety switch to fail.
+ */
+export function unknownFlag(args: readonly string[]): string | undefined {
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i] as string;
+    if (!token.startsWith("-")) continue;
+
+    if (!KNOWN_FLAGS.has(token)) return token;
+    if (VALUE_FLAGS.has(token)) i += 1;
+  }
+
+  return undefined;
 }
 
 function flagValue(argv: readonly string[], ...names: string[]): string | undefined {
@@ -73,9 +142,20 @@ function flagValue(argv: readonly string[], ...names: string[]): string | undefi
   return undefined;
 }
 
-function resolveRoot(argv: readonly string[], io: Io): string {
+/** The directory the user pointed at, taken literally. */
+function targetDir(argv: readonly string[], io: Io): string {
   const explicit = flagValue(argv, "-C", "--cwd");
-  return explicit === undefined ? io.cwd : resolve(io.cwd, explicit);
+  return explicit === undefined ? resolve(io.cwd) : resolve(io.cwd, explicit);
+}
+
+/**
+ * The project root for commands that read an existing configuration.
+ *
+ * `init` deliberately does not use this: "initialise here" has to mean here,
+ * not somewhere up the tree.
+ */
+function resolveRoot(argv: readonly string[], io: Io): string {
+  return findProjectRoot(targetDir(argv, io));
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +163,7 @@ function resolveRoot(argv: readonly string[], io: Io): string {
 // ---------------------------------------------------------------------------
 
 async function commandInit(argv: readonly string[], io: Io): Promise<number> {
-  const root = resolveRoot(argv, io);
+  const root = targetDir(argv, io);
   const existing = findConfigFile(root);
 
   if (existing !== undefined && !argv.includes("--force")) {
@@ -132,7 +212,7 @@ async function commandInit(argv: readonly string[], io: Io): Promise<number> {
 async function commandVerify(argv: readonly string[], io: Io): Promise<number> {
   const root = resolveRoot(argv, io);
 
-  if (skipRequested(argv, io.env)) {
+  if (isBypassed(argv, io.env)) {
     io.stdout("veritas: skipped (VERITAS_SKIP or --skip). Nothing was verified.\n");
     return 0;
   }
@@ -201,38 +281,60 @@ async function commandHook(argv: readonly string[], io: Io): Promise<number> {
 // ---------------------------------------------------------------------------
 
 export async function main(argv: readonly string[], io: Io = defaultIo): Promise<number> {
-  const command = argv[0];
+  const { command, args } = splitArgv(argv);
 
-  if (command === undefined || command === "-h" || command === "--help") {
+  if (args.includes("-h") || args.includes("--help")) {
     io.stdout(USAGE);
     return 0;
   }
 
-  if (command === "-v" || command === "--version") {
+  // Checked before the no-command fallback, or `veritas --version` prints usage.
+  if (args.includes("-v") || args.includes("--version")) {
     io.stdout(`${VERSION}\n`);
     return 0;
   }
 
-  const rest = argv.slice(1);
+  if (command === undefined) {
+    io.stdout(USAGE);
+    return 0;
+  }
+
+  const bad = unknownFlag(args);
+  if (bad !== undefined) {
+    throw new Error(`unknown option: ${bad}`);
+  }
 
   switch (command) {
     case "init":
-      return commandInit(rest, io);
+      return commandInit(args, io);
     case "verify":
-      return commandVerify(rest, io);
+      return commandVerify(args, io);
     case "status":
-      return commandStatus(rest, io);
+      return commandStatus(args, io);
     case "hook":
-      return commandHook(rest, io);
+      return commandHook(args, io);
     default:
       throw new Error(`unknown command: ${command}`);
   }
 }
 
+/**
+ * Whether this module is the process entry point.
+ *
+ * String comparison against import.meta.url is not reliable: drive-letter case,
+ * separators and URL escaping all differ between the two. pathToFileURL
+ * normalises both sides the same way. Getting this wrong is silent and total —
+ * the CLI would exit 0 having done nothing at all.
+ */
 function isDirectRun(): boolean {
   const entry = process.argv[1];
   if (entry === undefined) return false;
-  return import.meta.url.endsWith(entry.replaceAll("\\", "/")) || import.meta.url === `file:///${entry.replaceAll("\\", "/")}`;
+
+  try {
+    return pathToFileURL(realpathSync(entry)).href === pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+  } catch {
+    return false;
+  }
 }
 
 if (isDirectRun()) {

@@ -1,0 +1,33 @@
+# veritas-gate gates its own development. If this file were wrong, the project
+# would be making a claim it does not honour.
+
+version: 1
+
+checks:
+  - name: typecheck
+    run: npm run typecheck
+    timeout: 120
+    blocking: true
+
+  - name: test
+    run: npm test
+    timeout: 600
+    blocking: true
+
+  # Non-blocking on purpose: a stale bundle should be visible during
+  # development but is enforced properly by CI, which fails the build.
+  - name: build
+    run: npm run build
+    timeout: 180
+    blocking: false
+
+max_attempts: 3
+
+watch:
+  - "src/**"
+  - "test/**"
+  - "scripts/**"
+  - "package.json"
+  - "tsconfig.json"
+
+dry_run: false

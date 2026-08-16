@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join5, resolve } from "node:path";
+import { writeFileSync as writeFileSync3, realpathSync } from "node:fs";
+import { join as join5, resolve as resolve2 } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 // src/config.ts
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
 
 // src/yaml.ts
 var YamlError = class extends Error {
@@ -21,11 +22,12 @@ var KEY_PATTERN = /^([A-Za-z0-9_.\-$]+)\s*:(?:\s+(.*))?$/;
 function stripComment(raw) {
   let inSingle = false;
   let inDouble = false;
+  const startsScalar = (index) => index === 0 || /\s/.test(raw[index - 1] ?? "");
   for (let i = 0; i < raw.length; i += 1) {
     const char = raw[i];
-    if (char === "'" && !inDouble) {
+    if (char === "'" && !inDouble && (inSingle || startsScalar(i))) {
       inSingle = !inSingle;
-    } else if (char === '"' && !inSingle) {
+    } else if (char === '"' && !inSingle && (inDouble || startsScalar(i))) {
       inDouble = !inDouble;
     } else if (char === "#" && !inSingle && !inDouble) {
       if (i === 0 || /\s/.test(raw[i - 1] ?? "")) {
@@ -55,13 +57,87 @@ function toLines(source) {
   });
   return lines;
 }
+function unescapeDoubleQuoted(body, line) {
+  let result = "";
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body[i];
+    if (char !== "\\") {
+      result += char;
+      continue;
+    }
+    const next = body[i + 1];
+    i += 1;
+    switch (next) {
+      case '"':
+        result += '"';
+        break;
+      case "\\":
+        result += "\\";
+        break;
+      case "/":
+        result += "/";
+        break;
+      case "n":
+        result += "\n";
+        break;
+      case "r":
+        result += "\r";
+        break;
+      case "t":
+        result += "	";
+        break;
+      case "0":
+        result += "\0";
+        break;
+      case "u": {
+        const hex = body.slice(i + 1, i + 5);
+        if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+          throw new YamlError("invalid \\u escape in a double-quoted string", line);
+        }
+        result += String.fromCharCode(Number.parseInt(hex, 16));
+        i += 4;
+        break;
+      }
+      case void 0:
+        throw new YamlError("a double-quoted string ends with a dangling backslash", line);
+      default:
+        throw new YamlError(`unsupported escape \\${next} in a double-quoted string`, line);
+    }
+  }
+  return result;
+}
+function closingQuote(text, quote) {
+  for (let i = 1; i < text.length; i += 1) {
+    if (quote === '"' && text[i] === "\\") {
+      i += 1;
+      continue;
+    }
+    if (text[i] === quote) {
+      if (quote === "'" && text[i + 1] === "'") {
+        i += 1;
+        continue;
+      }
+      return i;
+    }
+  }
+  return -1;
+}
 function parseScalar(raw, line) {
   const text = raw.trim();
   if (text === "") {
     return null;
   }
-  if (text.startsWith('"') && text.endsWith('"') && text.length >= 2 || text.startsWith("'") && text.endsWith("'") && text.length >= 2) {
-    return text.slice(1, -1);
+  if (text.startsWith('"') || text.startsWith("'")) {
+    const quote = text[0];
+    const end = closingQuote(text, quote);
+    if (end === -1) {
+      throw new YamlError("unterminated quoted string", line);
+    }
+    if (text.slice(end + 1).trim() !== "") {
+      throw new YamlError("unexpected content after a quoted string", line);
+    }
+    const body = text.slice(1, end);
+    return quote === '"' ? unescapeDoubleQuoted(body, line) : body.replaceAll("''", "'");
   }
   if (text === "[]") return [];
   if (text === "{}") return {};
@@ -193,6 +269,13 @@ var DEFAULT_CONFIG = {
   watch: [],
   dryRun: false
 };
+function isBypassed(argv, env) {
+  if (argv.includes("--skip")) return true;
+  const value = env["VERITAS_SKIP"];
+  if (value === void 0) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "" && normalized !== "0" && normalized !== "false" && normalized !== "no";
+}
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -429,6 +512,22 @@ function findConfigFile(root) {
   }
   return void 0;
 }
+function findProjectRoot(start) {
+  let current = resolve(start);
+  let gitRoot;
+  for (; ; ) {
+    if (findConfigFile(current) !== void 0) {
+      return current;
+    }
+    if (gitRoot === void 0 && existsSync(join(current, ".git"))) {
+      gitRoot = current;
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return gitRoot ?? resolve(start);
+}
 function loadConfig(root) {
   const path = findConfigFile(root);
   if (path === void 0) {
@@ -469,13 +568,24 @@ function loadConfig(root) {
   const { config, warnings } = validateConfig(parsed);
   return { config, warnings, source: "file", path };
 }
-function quoteIfNeeded(value) {
-  return /^[A-Za-z0-9_./\- ]+$/.test(value) ? value : JSON.stringify(value);
+function yamlQuote(value) {
+  const needsQuoting = value === "" || value !== value.trim() || /^[-?:,[\]{}#&*!|>'"%@`]/.test(value) || /:\s/.test(value) || /\s#/.test(value) || /[\n\r\t]/.test(value) || ["true", "false", "yes", "no", "on", "off", "null", "~"].includes(value.toLowerCase()) || /^-?\d+(\.\d+)?$/.test(value);
+  if (!needsQuoting) {
+    return value;
+  }
+  if (!/['\n\r\t]/.test(value)) {
+    return `'${value}'`;
+  }
+  if (!/[\n\r\t]/.test(value)) {
+    return `'${value.replaceAll("'", "''")}'`;
+  }
+  const escaped = value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n").replaceAll("\r", "\\r").replaceAll("	", "\\t");
+  return `"${escaped}"`;
 }
 function renderConfig(config, detection) {
   const lines = [];
   lines.push("# veritas-gate configuration");
-  lines.push("# https://github.com/veritas-gate/veritas-gate");
+  lines.push("# https://github.com/YOUR-USERNAME/veritas-gate");
   if (detection !== void 0 && detection.ecosystems.length > 0) {
     lines.push(`# Generated by \`veritas init\` (detected: ${detection.ecosystems.join(", ")}).`);
   }
@@ -494,8 +604,8 @@ function renderConfig(config, detection) {
   } else {
     lines.push("checks:");
     for (const check of config.checks) {
-      lines.push(`  - name: ${quoteIfNeeded(check.name)}`);
-      lines.push(`    run: ${quoteIfNeeded(check.run)}`);
+      lines.push(`  - name: ${yamlQuote(check.name)}`);
+      lines.push(`    run: ${yamlQuote(check.run)}`);
       lines.push(`    timeout: ${check.timeout}`);
       lines.push(`    blocking: ${check.blocking}${check.blocking ? "" : "     # reports, does not block"}`);
     }
@@ -513,7 +623,7 @@ function renderConfig(config, detection) {
     lines.push("# Skip checks when no matching file changed since the last green run.");
     lines.push("watch:");
     for (const pattern of config.watch) {
-      lines.push(`  - ${JSON.stringify(pattern)}`);
+      lines.push(`  - ${yamlQuote(pattern)}`);
     }
   }
   lines.push("");
@@ -616,6 +726,7 @@ var TailBuffer = class {
     return this.#chunks.join("");
   }
 };
+var DETACH_CHECKS = platform !== "win32";
 function killTree(pid) {
   if (pid === void 0) return;
   if (platform === "win32") {
@@ -626,17 +737,21 @@ function killTree(pid) {
     return;
   }
   try {
-    process.kill(pid, "SIGKILL");
+    process.kill(-pid, "SIGKILL");
   } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+    }
   }
 }
 function runCheck(check, options) {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const startedAt = Date.now();
     const stdout = new TailBuffer();
     const stderr = new TailBuffer();
     const finish = (status, exitCode) => {
-      resolve2({
+      resolve3({
         name: check.name,
         command: check.run,
         status,
@@ -659,7 +774,8 @@ function runCheck(check, options) {
           // another veritas run.
           VERITAS_SKIP: "1"
         },
-        windowsHide: true
+        windowsHide: true,
+        detached: DETACH_CHECKS
       });
     } catch (error) {
       stderr.append(error instanceof Error ? error.message : String(error));
@@ -1124,9 +1240,12 @@ function globToRegExp(pattern) {
   }
   return new RegExp(`^${source}$`);
 }
-function matchesAny(relativePath, patterns) {
+function compileGlobs(patterns) {
+  return patterns.map(globToRegExp);
+}
+function matchesCompiled(relativePath, compiled) {
   const normalized = relativePath.split(sep).join("/");
-  return patterns.some((pattern) => globToRegExp(pattern).test(normalized));
+  return compiled.some((regex) => regex.test(normalized));
 }
 var IGNORED_DIRECTORIES = /* @__PURE__ */ new Set([
   ".git",
@@ -1153,6 +1272,7 @@ var IGNORED_DIRECTORIES = /* @__PURE__ */ new Set([
 var MAX_SCANNED_FILES = 2e4;
 function fingerprint(root, patterns) {
   if (patterns.length === 0) return null;
+  const compiled = compileGlobs(patterns);
   const hash = createHash("sha256");
   let scanned = 0;
   let matched = 0;
@@ -1180,7 +1300,7 @@ function fingerprint(root, patterns) {
         return;
       }
       const relativePath = relative(root, full);
-      if (!matchesAny(relativePath, patterns)) continue;
+      if (!matchesCompiled(relativePath, compiled)) continue;
       try {
         const stats = statSync2(full);
         hash.update(`${relativePath.split(sep).join("/")}\0${stats.size}\0${Math.floor(stats.mtimeMs)}
@@ -1210,11 +1330,6 @@ function block(reason, systemMessage) {
     systemMessage
   };
 }
-function skipRequested(argv, env) {
-  if (argv.includes("--skip")) return true;
-  const value = env["VERITAS_SKIP"];
-  return value !== void 0 && value !== "" && value !== "0" && value.toLowerCase() !== "false";
-}
 async function handleHook(rawPayload, context) {
   try {
     return await decide(rawPayload, context);
@@ -1235,10 +1350,11 @@ async function decide(rawPayload, context) {
       return allow("veritas-gate could not parse the hook payload and let this turn through.");
     }
   }
-  const root = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
+  const startDir = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
+  const root = findProjectRoot(startDir);
   const sessionId = typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : "default";
   const run = context.runner ?? runChecks;
-  if (skipRequested(context.argv, context.env)) {
+  if (isBypassed(context.argv, context.env)) {
     return allow();
   }
   const loopProtectionEngaged = payload.loop_protection_blocked === true || payload.stop_hook_active === true;
@@ -1337,10 +1453,48 @@ var defaultIo = {
   cwd: process.cwd(),
   stdin: readStdin
 };
-function skipRequested2(argv, env) {
-  if (argv.includes("--skip")) return true;
-  const value = env["VERITAS_SKIP"];
-  return value !== void 0 && value !== "" && value !== "0" && value.toLowerCase() !== "false";
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["-C", "--cwd", "--limit", "-n"]);
+var KNOWN_FLAGS = /* @__PURE__ */ new Set([
+  "-h",
+  "--help",
+  "-v",
+  "--version",
+  "-C",
+  "--cwd",
+  "--skip",
+  "--force",
+  "--limit",
+  "-n"
+]);
+function splitArgv(argv) {
+  let command;
+  const args = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token.startsWith("-")) {
+      args.push(token);
+      if (VALUE_FLAGS.has(token) && argv[i + 1] !== void 0) {
+        args.push(argv[i + 1]);
+        i += 1;
+      }
+      continue;
+    }
+    if (command === void 0) {
+      command = token;
+      continue;
+    }
+    args.push(token);
+  }
+  return { command, args };
+}
+function unknownFlag(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i];
+    if (!token.startsWith("-")) continue;
+    if (!KNOWN_FLAGS.has(token)) return token;
+    if (VALUE_FLAGS.has(token)) i += 1;
+  }
+  return void 0;
 }
 function flagValue(argv, ...names) {
   for (const name of names) {
@@ -1351,12 +1505,15 @@ function flagValue(argv, ...names) {
   }
   return void 0;
 }
-function resolveRoot(argv, io) {
+function targetDir(argv, io) {
   const explicit = flagValue(argv, "-C", "--cwd");
-  return explicit === void 0 ? io.cwd : resolve(io.cwd, explicit);
+  return explicit === void 0 ? resolve2(io.cwd) : resolve2(io.cwd, explicit);
+}
+function resolveRoot(argv, io) {
+  return findProjectRoot(targetDir(argv, io));
 }
 async function commandInit(argv, io) {
-  const root = resolveRoot(argv, io);
+  const root = targetDir(argv, io);
   const existing = findConfigFile(root);
   if (existing !== void 0 && !argv.includes("--force")) {
     io.stderr(`veritas: ${existing} already exists. Pass --force to overwrite it.
@@ -1396,7 +1553,7 @@ Detected: ${detection.ecosystems.join(", ")}
 }
 async function commandVerify(argv, io) {
   const root = resolveRoot(argv, io);
-  if (skipRequested2(argv, io.env)) {
+  if (isBypassed(argv, io.env)) {
     io.stdout("veritas: skipped (VERITAS_SKIP or --skip). Nothing was verified.\n");
     return 0;
   }
@@ -1443,26 +1600,33 @@ async function commandHook(argv, io) {
   return 0;
 }
 async function main(argv, io = defaultIo) {
-  const command = argv[0];
-  if (command === void 0 || command === "-h" || command === "--help") {
+  const { command, args } = splitArgv(argv);
+  if (args.includes("-h") || args.includes("--help")) {
     io.stdout(USAGE);
     return 0;
   }
-  if (command === "-v" || command === "--version") {
+  if (args.includes("-v") || args.includes("--version")) {
     io.stdout(`${VERSION}
 `);
     return 0;
   }
-  const rest = argv.slice(1);
+  if (command === void 0) {
+    io.stdout(USAGE);
+    return 0;
+  }
+  const bad = unknownFlag(args);
+  if (bad !== void 0) {
+    throw new Error(`unknown option: ${bad}`);
+  }
   switch (command) {
     case "init":
-      return commandInit(rest, io);
+      return commandInit(args, io);
     case "verify":
-      return commandVerify(rest, io);
+      return commandVerify(args, io);
     case "status":
-      return commandStatus(rest, io);
+      return commandStatus(args, io);
     case "hook":
-      return commandHook(rest, io);
+      return commandHook(args, io);
     default:
       throw new Error(`unknown command: ${command}`);
   }
@@ -1470,7 +1634,11 @@ async function main(argv, io = defaultIo) {
 function isDirectRun() {
   const entry = process.argv[1];
   if (entry === void 0) return false;
-  return import.meta.url.endsWith(entry.replaceAll("\\", "/")) || import.meta.url === `file:///${entry.replaceAll("\\", "/")}`;
+  try {
+    return pathToFileURL(realpathSync(entry)).href === pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+  } catch {
+    return false;
+  }
 }
 if (isDirectRun()) {
   main(process.argv.slice(2)).then(
@@ -1489,5 +1657,6 @@ export {
   VERSION,
   main,
   readStdin,
-  skipRequested2 as skipRequested
+  splitArgv,
+  unknownFlag
 };

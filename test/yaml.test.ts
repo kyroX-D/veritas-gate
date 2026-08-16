@@ -86,6 +86,13 @@ test("a trailing comment is stripped but an inline hash is not", () => {
   });
 });
 
+test("an apostrophe inside a plain scalar does not swallow the comment", () => {
+  // Regression: treating every quote as a delimiter left the comment in the
+  // command, so veritas ran `echo it's fine   # note`.
+  assert.deepEqual(parseYaml("run: echo it's fine   # note"), { run: "echo it's fine" });
+  assert.deepEqual(parseYaml('run: node -e "x"   # note'), { run: 'node -e "x"' });
+});
+
 test("a sequence may sit at the same indentation as its key", () => {
   assert.deepEqual(parseYaml("watch:\n- src/**\n- test/**\n"), { watch: ["src/**", "test/**"] });
 });
@@ -135,4 +142,61 @@ test("a malformed line is rejected with its line number", () => {
 
 test("bad indentation inside a list is rejected", () => {
   assert.throws(() => parseYaml("checks:\n  - name: a\n      run: b\n     oops: c\n"), YamlError);
+});
+
+// --- quoted scalars (regression: init produced corrupted commands) ---------
+
+test("escapes inside a double-quoted string are resolved", () => {
+  // The file on disk reads:  run: "node -e \"process.exit(1)\""
+  assert.deepEqual(parseYaml('run: "node -e \\"process.exit(1)\\""'), {
+    run: 'node -e "process.exit(1)"',
+  });
+});
+
+test("a double-quoted string resolves escaped backslashes", () => {
+  // The file on disk reads:  path: "C:\\Users\\x"
+  assert.deepEqual(parseYaml('path: "C:\\\\Users\\\\x"'), { path: "C:\\Users\\x" });
+});
+
+test("the standard double-quote escapes are supported", () => {
+  assert.deepEqual(parseYaml('a: "tab\\there"\nb: "nl\\nhere"\nc: "slash\\/here"\nd: "u\\u0041"'), {
+    a: "tab\there",
+    b: "nl\nhere",
+    c: "slash/here",
+    d: "uA",
+  });
+});
+
+test("a single-quoted string escapes a quote by doubling it", () => {
+  assert.deepEqual(parseYaml("run: 'echo it''s fine'"), { run: "echo it's fine" });
+});
+
+test("a single-quoted string keeps backslashes literally", () => {
+  // The file on disk reads:  run: 'a\b'
+  assert.deepEqual(parseYaml("run: 'a\\b'"), { run: "a\\b" });
+});
+
+test("double quotes inside a single-quoted string need no escaping", () => {
+  assert.deepEqual(parseYaml(`run: 'node -e "process.exit(1)"'`), { run: 'node -e "process.exit(1)"' });
+});
+
+test("an unterminated quoted string is rejected", () => {
+  assert.throws(() => parseYaml('run: "no end'), YamlError);
+  assert.throws(() => parseYaml("run: 'no end"), YamlError);
+});
+
+test("content after a closing quote is rejected instead of being swallowed", () => {
+  assert.throws(() => parseYaml('run: "a" and then b'), YamlError);
+});
+
+test("an unsupported escape is rejected rather than silently dropped", () => {
+  assert.throws(() => parseYaml('run: "bad \\q escape"'), YamlError);
+});
+
+test("a dangling backslash is rejected", () => {
+  assert.throws(() => parseYaml('run: "dangling \\'), YamlError);
+});
+
+test("an invalid unicode escape is rejected", () => {
+  assert.throws(() => parseYaml('run: "\\uZZZZ"'), YamlError);
 });

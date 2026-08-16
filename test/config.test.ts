@@ -11,6 +11,9 @@ import {
   renderConfig,
   initialConfig,
   findConfigFile,
+  findProjectRoot,
+  isBypassed,
+  yamlQuote,
   DEFAULT_MAX_ATTEMPTS,
   DEFAULT_TIMEOUT_SECONDS,
   type Check,
@@ -326,4 +329,131 @@ test("rendered config for an unknown project round-trips to zero checks", () => 
 test("rendered config mentions the bypass escape hatch", () => {
   const { config, detection } = initialConfig(makeProject({}));
   assert.match(renderConfig(config, detection), /VERITAS_SKIP=1/);
+});
+
+// --- YAML quoting (regression: init wrote commands it could not read back) --
+
+test("yamlQuote leaves plain values bare", () => {
+  assert.equal(yamlQuote("npm test"), "npm test");
+  assert.equal(yamlQuote("cargo clippy --all-targets"), "cargo clippy --all-targets");
+});
+
+test("yamlQuote quotes values that would otherwise change meaning", () => {
+  assert.equal(yamlQuote(""), "''");
+  assert.equal(yamlQuote("true"), "'true'");
+  assert.equal(yamlQuote("42"), "'42'");
+  assert.equal(yamlQuote("# not a comment"), "'# not a comment'");
+  assert.equal(yamlQuote("a: b"), "'a: b'");
+  assert.equal(yamlQuote("trailing "), "'trailing '");
+});
+
+test("yamlQuote leaves quotes inside a plain scalar alone", () => {
+  // A quote that does not start the scalar is an ordinary character in YAML,
+  // so these need no quoting at all. The round-trip test below is what proves
+  // it, rather than the shape of the output.
+  assert.equal(yamlQuote('node -e "process.exit(1)"'), 'node -e "process.exit(1)"');
+  assert.equal(yamlQuote("echo it's fine"), "echo it's fine");
+});
+
+test("yamlQuote quotes a value that opens with a quote character", () => {
+  assert.equal(yamlQuote('"leading quote'), `'"leading quote'`);
+  assert.equal(yamlQuote("'leading apostrophe"), "'''leading apostrophe'");
+});
+
+test("commands with quotes survive a full render and reparse", () => {
+  const commands = [
+    'node -e "process.exit(1)"',
+    "echo 'single'",
+    "npm run test:unit -- --reporter dot",
+    'sh -c "a && b"',
+    "echo hash # not a comment",
+    `python -c 'print("hi")'`,
+    "echo it's fine",
+  ];
+
+  for (const run of commands) {
+    const config = {
+      version: 1,
+      checks: [{ name: "c", run, timeout: 30, blocking: true }],
+      maxAttempts: 3,
+      watch: ["src/**", "*.py"],
+      dryRun: false,
+    };
+
+    const { config: reparsed, warnings } = validateConfig(parseYaml(renderConfig(config)));
+
+    assert.deepEqual(warnings, [], `warnings for ${JSON.stringify(run)}`);
+    assert.equal(reparsed.checks[0]?.run, run, `round-trip changed ${JSON.stringify(run)}`);
+  }
+});
+
+test("a check name needing quotes also round-trips", () => {
+  const config = {
+    version: 1,
+    checks: [{ name: "test: unit", run: "npm test", timeout: 30, blocking: true }],
+    maxAttempts: 3,
+    watch: [],
+    dryRun: false,
+  };
+
+  const { config: reparsed, warnings } = validateConfig(parseYaml(renderConfig(config)));
+  assert.deepEqual(warnings, []);
+  assert.equal(reparsed.checks[0]?.name, "test: unit");
+});
+
+// --- the bypass switch -----------------------------------------------------
+
+test("isBypassed honours --skip", () => {
+  assert.equal(isBypassed(["--skip"], {}), true);
+  assert.equal(isBypassed([], {}), false);
+});
+
+test("isBypassed treats the usual truthy values as a skip", () => {
+  for (const value of ["1", "true", "TRUE", "yes", "on", "anything"]) {
+    assert.equal(isBypassed([], { VERITAS_SKIP: value }), true, `${value} should skip`);
+  }
+});
+
+test("isBypassed does not treat falsy values as a skip", () => {
+  for (const value of ["", "0", "false", "FALSE", "no", "  "]) {
+    assert.equal(isBypassed([], { VERITAS_SKIP: value }), false, `${value} should not skip`);
+  }
+});
+
+// --- project root discovery ------------------------------------------------
+
+test("findProjectRoot finds the config above a subdirectory", () => {
+  const root = makeProject({ ".veritas.yml": "checks: []\n", "src/deep/a.ts": "a" });
+  assert.equal(findProjectRoot(join(root, "src", "deep")), root);
+});
+
+test("findProjectRoot falls back to the git root when there is no config", () => {
+  const root = makeProject({ ".git/HEAD": "ref: refs/heads/main\n", "src/a.ts": "a" });
+  assert.equal(findProjectRoot(join(root, "src")), root);
+});
+
+test("findProjectRoot prefers a config over a higher git root", () => {
+  const root = makeProject({
+    ".git/HEAD": "ref: refs/heads/main\n",
+    "packages/app/.veritas.yml": "checks: []\n",
+    "packages/app/src/a.ts": "a",
+  });
+
+  assert.equal(findProjectRoot(join(root, "packages", "app", "src")), join(root, "packages", "app"));
+});
+
+test("findProjectRoot returns the starting directory when nothing is found", () => {
+  const root = makeProject({ "a.txt": "a" });
+  assert.equal(findProjectRoot(root), root);
+});
+
+test("loading from a subdirectory picks up the parent config", () => {
+  const root = makeProject({
+    ".veritas.yml": "checks:\n  - name: t\n    run: echo hi\n",
+    "src/a.ts": "a",
+  });
+
+  const loaded = loadConfig(findProjectRoot(join(root, "src")));
+  assert.equal(loaded.source, "file");
+  assert.deepEqual(names(loaded.config.checks), ["t"]);
 });
