@@ -1,0 +1,10 @@
+{
+  "name": "veritas-gate",
+  "displayName": "veritas-gate",
+  "version": "0.1.0",
+  "description": "Your agent doesn't get to say \"done\" without proof. Runs your tests, typecheck and lint before a turn is allowed to end.",
+  "license": "MIT",
+  "keywords": ["verification", "tests", "hooks", "quality"],
+  "homepage": "https://github.com/veritas-gate/veritas-gate",
+  "repository": "https://github.com/veritas-gate/veritas-gate"
+}

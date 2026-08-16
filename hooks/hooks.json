@@ -1,0 +1,18 @@
+{
+  "description": "Runs the configured verification checks before a turn is allowed to end.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/veritas.mjs", "hook"],
+            "timeout": 600,
+            "statusMessage": "veritas: verifying before finishing"
+          }
+        ]
+      }
+    ]
+  }
+}
