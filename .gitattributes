@@ -1,0 +1,3 @@
+# The bundled artifact is committed. Normalising line endings keeps it
+# byte-identical no matter which platform ran the build.
+* text=auto eol=lf
