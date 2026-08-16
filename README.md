@@ -344,13 +344,13 @@ A verification tool that oversells itself has a credibility problem. So:
 - It only hooks `Stop`. Claude Code also exposes `TaskCompleted`, which can
   block a task from being marked done. Gating that too is an obvious next step
   and is not implemented yet.
-- The live testing behind it is narrow. Loading, gating a green turn and
-  blocking a red one have been watched happen in a real session, on the Windows
-  desktop app, installed through the skills directory. Not yet watched happen:
-  escalation after `max_attempts`, the `VERITAS_SKIP` bypass mid-session, the
-  `claude --plugin-dir` route, and any session on macOS or Linux. All of those
-  are covered by the test suite and by CI on three platforms, which is evidence
-  but not the same evidence.
+- The live testing behind it is narrow. Loading, gating a green turn, blocking a
+  red one and giving up after `max_attempts` have all been observed in real
+  sessions, on the Windows desktop app, installed through the skills directory.
+  Not yet observed: the `VERITAS_SKIP` bypass mid-session, the
+  `claude --plugin-dir` route, and any session on macOS or Linux. Those are
+  covered by the test suite and by CI on three platforms, which is evidence but
+  not the same evidence.
 
 ## No network, no telemetry
 

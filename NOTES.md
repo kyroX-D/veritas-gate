@@ -184,13 +184,27 @@ Confirmed:
   assertion and the instruction not to weaken the check.
 - **`session_id` is a UUID** and is stable within a session, which is what the
   per-session attempt counter relies on.
+- **Escalation holds under real conditions.** One session produced six
+  hook-triggered runs against a project that stayed red, and its block count
+  rose 1, 2, 3 and then stopped. Three further turns were recorded as runs while
+  the counter stayed at 3. The normal path would have reached 6, so the
+  escalation branch ran and let those turns through, and the give-up state stuck
+  rather than restarting the cycle.
 - Cost, for reference: the hook added roughly 16 seconds to one turn in this
   repository (typecheck 2.4s, test 13.7s). The next turn was skipped by the
   change cache.
 
-Not confirmed live, and listed in the README as such: escalation after
-`max_attempts`, the `VERITAS_SKIP` bypass mid-session, the
-`claude --plugin-dir` route, and any session on macOS or Linux.
+One inferential step worth flagging: the escalation above is read from
+`state.json` and the ledger, not from having seen the `NOT VERIFIED` banner. The
+counter behaviour has only one explanation in the code, but that is an inference
+rather than a direct observation.
+
+Not confirmed live, and listed in the README as such: the `VERITAS_SKIP` bypass
+mid-session, the `claude --plugin-dir` route, and any session on macOS or Linux.
+
+The ledger records `trigger` but not `session_id`, which made reconstructing the
+above harder than it needed to be. Adding it would make the audit trail able to
+answer "which session was this".
 
 ---
 
