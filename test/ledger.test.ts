@@ -86,6 +86,25 @@ test("an entry carries every documented field", () => {
   assert.match(entry.timestamp, /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
 });
 
+test("an entry carries the session it belongs to, and null when there is none", () => {
+  assert.equal(toEntry(result(), "hook", null, "session-7").session_id, "session-7");
+  assert.equal(toEntry(result(), "manual", null).session_id, null);
+});
+
+test("recordResults writes the session id through to the file", () => {
+  const root = makeRoot();
+  recordResults(root, [result({ name: "first" })], "hook", "session-7");
+  recordResults(root, [result({ name: "second" })], "manual");
+
+  assert.deepEqual(
+    readEntries(root).map((entry) => entry.session_id),
+    ["session-7", null],
+  );
+
+  const raw: unknown = JSON.parse(readFileSync(ledgerPath(root), "utf8").split("\n")[0] as string);
+  assert.equal((raw as LedgerEntry).session_id, "session-7", "the field is on disk, not just in memory");
+});
+
 test("the ledger is append-only across calls", () => {
   const root = makeRoot();
 

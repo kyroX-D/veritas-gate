@@ -279,7 +279,7 @@ Claims are cheap. Every run, from the hook or from the CLI, gets appended to
 `.veritas/ledger.jsonl`:
 
 ```json
-{"timestamp":"2026-08-16T13:33:03.225Z","trigger":"manual","check":"test","command":"npm test","status":"failed","exit_code":1,"duration_ms":922,"blocking":true,"output":"3 !== 6","git_commit":null}
+{"timestamp":"2026-08-16T13:33:03.225Z","trigger":"manual","check":"test","command":"npm test","status":"failed","exit_code":1,"duration_ms":922,"blocking":true,"output":"3 !== 6","git_commit":null,"session_id":null}
 ```
 
 `veritas status` renders it as a table:
@@ -295,9 +295,15 @@ Last 3 run(s) from .veritas/ledger.jsonl:
 No failures in this window.
 ```
 
-The last column is the commit the run happened on, so a green row ties back to a
-specific state of the tree. It shows dashes when the project isn't a git
+The commit column is the state of the tree the run happened on, so a green row
+ties back to something specific. It shows dashes when the project isn't a git
 repository.
+
+Hook runs also carry the `session_id` from the Stop payload, and `veritas
+status` adds a last column with the first characters of it when any run in the
+window has one. That is what makes two agents working in the same checkout
+tellable apart afterwards. A `veritas verify` you ran yourself belongs to no
+session and records `null`.
 
 ## Where it looks for things
 

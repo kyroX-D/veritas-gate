@@ -109,7 +109,12 @@ async function decide(rawPayload: string, context: HookContext): Promise<HookOut
   // subdirectory; the config and the ledger belong at the project root.
   const startDir = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
   const root = findProjectRoot(startDir);
-  const sessionId = typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : "default";
+  // Two different things. The ledger records what the payload actually carried,
+  // so a null there means "no session id was sent" rather than a session that
+  // happens to be called "default"; the state file needs a key regardless.
+  const payloadSessionId =
+    typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : null;
+  const sessionId = payloadSessionId ?? "default";
   const run = context.runner ?? runChecks;
 
   // --- 2. Unconditional pass-throughs --------------------------------------
@@ -134,7 +139,7 @@ async function decide(rawPayload: string, context: HookContext): Promise<HookOut
 
   if (loaded.config.dryRun) {
     const results = await run(loaded.config.checks, { cwd: root, env: context.env });
-    recordResults(root, results, "hook");
+    recordResults(root, results, "hook", payloadSessionId);
 
     const failures = results.filter(isBlockingFailure);
     return allow(
@@ -154,7 +159,7 @@ async function decide(rawPayload: string, context: HookContext): Promise<HookOut
       env: context.env,
       stopOnFirstBlockingFailure: false,
     });
-    recordResults(root, results, "hook");
+    recordResults(root, results, "hook", payloadSessionId);
 
     const failures = results.filter(isBlockingFailure);
 
@@ -190,7 +195,7 @@ async function decide(rawPayload: string, context: HookContext): Promise<HookOut
     stopOnFirstBlockingFailure: true,
   });
 
-  recordResults(root, results, "hook");
+  recordResults(root, results, "hook", payloadSessionId);
 
   const failures = results.filter(isBlockingFailure);
 

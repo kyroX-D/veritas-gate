@@ -334,6 +334,35 @@ test("hook runs are recorded with the hook trigger", async () => {
   assert.match(entries[0]?.output ?? "", /AssertionError/);
 });
 
+test("a hook run records the session it came from", async () => {
+  const root = makeRoot(config(FAILING));
+  await call(payload(root, { session_id: "550e8400-e29b-41d4-a716-446655440000" }), root);
+
+  assert.equal(readEntries(root)[0]?.session_id, "550e8400-e29b-41d4-a716-446655440000");
+});
+
+test("two sessions in one repository stay distinguishable in the ledger", async () => {
+  const root = makeRoot(config(FAILING));
+  await call(payload(root, { session_id: "aaa" }), root);
+  await call(payload(root, { session_id: "bbb" }), root);
+
+  assert.deepEqual(
+    readEntries(root).map((entry) => entry.session_id),
+    ["aaa", "bbb"],
+  );
+});
+
+test("a payload with no session id records null rather than a fake one", async () => {
+  const root = makeRoot(config(FAILING));
+  await call(JSON.stringify({ cwd: root, hook_event_name: "Stop" }), root);
+
+  const entry = readEntries(root)[0];
+  assert.equal(entry?.session_id, null, "an absent session id must not be recorded as \"default\"");
+
+  // The state file still needs a key, and that key is not the ledger's concern.
+  assert.equal(blocksFor(readState(root), "default"), 1);
+});
+
 // --- fail-open -------------------------------------------------------------
 
 test("a malformed payload lets the turn through with a warning", async () => {

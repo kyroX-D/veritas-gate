@@ -891,7 +891,7 @@ function currentCommit(root) {
     return null;
   }
 }
-function toEntry(result, trigger, gitCommit) {
+function toEntry(result, trigger, gitCommit, sessionId = null) {
   return {
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
     trigger,
@@ -902,7 +902,8 @@ function toEntry(result, trigger, gitCommit) {
     duration_ms: result.durationMs,
     blocking: result.blocking,
     output: truncateOutput(combinedOutput(result)),
-    git_commit: gitCommit
+    git_commit: gitCommit,
+    session_id: sessionId
   };
 }
 function appendEntries(root, entries) {
@@ -917,11 +918,11 @@ function appendEntries(root, entries) {
     return false;
   }
 }
-function recordResults(root, results, trigger) {
+function recordResults(root, results, trigger, sessionId = null) {
   const commit = currentCommit(root);
   return appendEntries(
     root,
-    results.map((result) => toEntry(result, trigger, commit))
+    results.map((result) => toEntry(result, trigger, commit, sessionId))
   );
 }
 function readEntries(root, limit = 20) {
@@ -1092,6 +1093,12 @@ function formatNotVerified(results, attempts, reason) {
   lines.push("Run `veritas verify` to see the full output, or check .veritas/ledger.jsonl.");
   return lines.join("\n");
 }
+function hasSession(entry) {
+  return typeof entry.session_id === "string" && entry.session_id !== "";
+}
+function shortSession(entry) {
+  return hasSession(entry) ? entry.session_id.slice(0, 8) : "-";
+}
 function formatStatus(entries, root) {
   if (entries.length === 0) {
     return [`No runs recorded yet in ${ledgerPath(root)}.`, 'Run "veritas verify" to record one.', ""].join("\n");
@@ -1099,14 +1106,16 @@ function formatStatus(entries, root) {
   const lines = [`Last ${entries.length} run(s) from .veritas/ledger.jsonl:`, ""];
   const statusColumn = Math.max(...entries.map((entry) => entry.status.length));
   const nameColumn = Math.max(...entries.map((entry) => entry.check.length));
+  const sessionColumn = entries.some(hasSession) ? Math.max(...entries.map((entry) => shortSession(entry).length)) : 0;
   for (const entry of [...entries].reverse()) {
     const when = entry.timestamp.replace("T", " ").replace(/\.\d+Z$/, "Z");
     const status = entry.status.padEnd(statusColumn);
     const name = entry.check.padEnd(nameColumn);
     const exit = entry.exit_code === null ? "   -" : String(entry.exit_code).padStart(4);
     const commit = entry.git_commit === null ? "-------" : entry.git_commit.slice(0, 7);
+    const session = sessionColumn === 0 ? "" : `  ${shortSession(entry).padEnd(sessionColumn)}`;
     lines.push(
-      `${when}  ${entry.trigger.padEnd(6)}  ${status}  ${name}  exit ${exit}  ${formatDuration(entry.duration_ms).padStart(7)}  ${commit}`
+      `${when}  ${entry.trigger.padEnd(6)}  ${status}  ${name}  exit ${exit}  ${formatDuration(entry.duration_ms).padStart(7)}  ${commit}${session}`.trimEnd()
     );
   }
   const failing = entries.filter((entry) => entry.status === "failed" || entry.status === "timed-out");
@@ -1348,7 +1357,8 @@ async function decide(rawPayload, context) {
   }
   const startDir = typeof payload.cwd === "string" && payload.cwd !== "" ? payload.cwd : context.fallbackCwd;
   const root = findProjectRoot(startDir);
-  const sessionId = typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : "default";
+  const payloadSessionId = typeof payload.session_id === "string" && payload.session_id !== "" ? payload.session_id : null;
+  const sessionId = payloadSessionId ?? "default";
   const run = context.runner ?? runChecks;
   if (isBypassed(context.argv, context.env)) {
     return allow();
@@ -1362,7 +1372,7 @@ async function decide(rawPayload, context) {
   }
   if (loaded.config.dryRun) {
     const results2 = await run(loaded.config.checks, { cwd: root, env: context.env });
-    recordResults(root, results2, "hook");
+    recordResults(root, results2, "hook", payloadSessionId);
     const failures2 = results2.filter(isBlockingFailure);
     return allow(
       failures2.length === 0 ? "veritas-gate (dry_run): all blocking checks passed." : `veritas-gate (dry_run): would have blocked. Failing: ${failures2.map((r) => r.name).join(", ")}`
@@ -1376,7 +1386,7 @@ async function decide(rawPayload, context) {
       env: context.env,
       stopOnFirstBlockingFailure: false
     });
-    recordResults(root, results2, "hook");
+    recordResults(root, results2, "hook", payloadSessionId);
     const failures2 = results2.filter(isBlockingFailure);
     if (failures2.length === 0) {
       writeState(root, withReset(state, sessionId, fingerprint(root, loaded.config.watch)));
@@ -1398,7 +1408,7 @@ async function decide(rawPayload, context) {
     env: context.env,
     stopOnFirstBlockingFailure: true
   });
-  recordResults(root, results, "hook");
+  recordResults(root, results, "hook", payloadSessionId);
   const failures = results.filter(isBlockingFailure);
   if (failures.length === 0) {
     writeState(root, withReset(state, sessionId, current));

@@ -202,6 +202,22 @@ export function formatNotVerified(results: readonly CheckResult[], attempts: num
   return lines.join("\n");
 }
 
+/**
+ * Whether an entry names a session.
+ *
+ * Written as a runtime check rather than a `!== null` comparison because
+ * entries recorded before session_id existed have no such field at all, and the
+ * ledger is read back without a schema.
+ */
+function hasSession(entry: LedgerEntry): boolean {
+  return typeof entry.session_id === "string" && entry.session_id !== "";
+}
+
+/** Enough of a session id to tell two sessions apart in a table. */
+function shortSession(entry: LedgerEntry): string {
+  return hasSession(entry) ? (entry.session_id as string).slice(0, 8) : "-";
+}
+
 /** The table `veritas status` prints. */
 export function formatStatus(entries: readonly LedgerEntry[], root: string): string {
   if (entries.length === 0) {
@@ -215,15 +231,22 @@ export function formatStatus(entries: readonly LedgerEntry[], root: string): str
   const statusColumn = Math.max(...entries.map((entry) => entry.status.length));
   const nameColumn = Math.max(...entries.map((entry) => entry.check.length));
 
+  // Only worth a column when something in this window actually has one, so a
+  // ledger written entirely by `veritas verify` is not padded with dashes.
+  const sessionColumn = entries.some(hasSession)
+    ? Math.max(...entries.map((entry) => shortSession(entry).length))
+    : 0;
+
   for (const entry of [...entries].reverse()) {
     const when = entry.timestamp.replace("T", " ").replace(/\.\d+Z$/, "Z");
     const status = entry.status.padEnd(statusColumn);
     const name = entry.check.padEnd(nameColumn);
     const exit = entry.exit_code === null ? "   -" : String(entry.exit_code).padStart(4);
     const commit = entry.git_commit === null ? "-------" : entry.git_commit.slice(0, 7);
+    const session = sessionColumn === 0 ? "" : `  ${shortSession(entry).padEnd(sessionColumn)}`;
 
     lines.push(
-      `${when}  ${entry.trigger.padEnd(6)}  ${status}  ${name}  exit ${exit}  ${formatDuration(entry.duration_ms).padStart(7)}  ${commit}`,
+      `${when}  ${entry.trigger.padEnd(6)}  ${status}  ${name}  exit ${exit}  ${formatDuration(entry.duration_ms).padStart(7)}  ${commit}${session}`.trimEnd(),
     );
   }
 

@@ -28,6 +28,15 @@ export interface LedgerEntry {
   readonly output: string;
   /** HEAD commit hash, when the project is a git repository. */
   readonly git_commit: string | null;
+  /**
+   * The Claude Code session this run belongs to, or null for a manual run and
+   * for a hook payload that carried no session_id.
+   *
+   * Without it the ledger cannot answer "which session was this", which matters
+   * as soon as two sessions touch one repository, or when reconstructing why a
+   * particular turn was blocked.
+   */
+  readonly session_id: string | null;
 }
 
 /** Lines of captured output stored per ledger entry. */
@@ -103,7 +112,12 @@ export function currentCommit(root: string): string | null {
   }
 }
 
-export function toEntry(result: CheckResult, trigger: Trigger, gitCommit: string | null): LedgerEntry {
+export function toEntry(
+  result: CheckResult,
+  trigger: Trigger,
+  gitCommit: string | null,
+  sessionId: string | null = null,
+): LedgerEntry {
   return {
     timestamp: new Date().toISOString(),
     trigger,
@@ -115,6 +129,7 @@ export function toEntry(result: CheckResult, trigger: Trigger, gitCommit: string
     blocking: result.blocking,
     output: truncateOutput(combinedOutput(result)),
     git_commit: gitCommit,
+    session_id: sessionId,
   };
 }
 
@@ -138,11 +153,16 @@ export function appendEntries(root: string, entries: readonly LedgerEntry[]): bo
 }
 
 /** Records a set of results. Convenience wrapper around toEntry + appendEntries. */
-export function recordResults(root: string, results: readonly CheckResult[], trigger: Trigger): boolean {
+export function recordResults(
+  root: string,
+  results: readonly CheckResult[],
+  trigger: Trigger,
+  sessionId: string | null = null,
+): boolean {
   const commit = currentCommit(root);
   return appendEntries(
     root,
-    results.map((result) => toEntry(result, trigger, commit)),
+    results.map((result) => toEntry(result, trigger, commit, sessionId)),
   );
 }
 

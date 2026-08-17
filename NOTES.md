@@ -202,9 +202,13 @@ rather than a direct observation.
 Not confirmed live, and listed in the README as such: the `VERITAS_SKIP` bypass
 mid-session, the `claude --plugin-dir` route, and any session on macOS or Linux.
 
-The ledger records `trigger` but not `session_id`, which made reconstructing the
-above harder than it needed to be. Adding it would make the audit trail able to
-answer "which session was this".
+The ledger recorded `trigger` but not `session_id`, which made reconstructing
+the above harder than it needed to be. Ledger entries now carry the payload's
+`session_id` (null for a manual `veritas verify`, and null when the payload sent
+none rather than the `"default"` key the state file uses), so the audit trail can
+answer "which session was this". Entries written before that change have no such
+field at all, and `veritas status` renders them with a dash rather than
+`undefined`.
 
 ---
 
