@@ -77,7 +77,21 @@ itself. [`docs/demo.md`](docs/demo.md) covers recording it.
 
 ## Install
 
-Thirty seconds, no build step. The bundle in `dist/` is committed on purpose.
+Two commands, both typed inside Claude Code. No clone, no build step; the
+bundle in `dist/` is committed on purpose.
+
+```
+/plugin marketplace add kyroX-D/veritas-gate
+```
+
+```
+/plugin install veritas-gate@veritas
+```
+
+If the install summary says `Run /reload-plugins to activate.`, run that.
+
+<details>
+<summary>Installing from a clone instead</summary>
 
 ```bash
 git clone https://github.com/kyroX-D/veritas-gate
@@ -105,6 +119,8 @@ settings:
 ```bash
 claude --plugin-dir /path/to/veritas-gate
 ```
+
+</details>
 
 Then, in the project you want gated:
 

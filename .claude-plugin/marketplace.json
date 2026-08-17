@@ -1,0 +1,15 @@
+{
+  "name": "veritas",
+  "owner": {
+    "name": "kyroX",
+    "url": "https://github.com/kyroX-D"
+  },
+  "description": "Verification tooling for coding agents.",
+  "plugins": [
+    {
+      "name": "veritas-gate",
+      "source": "./",
+      "description": "Runs your tests, typecheck and lint before an agent's turn is allowed to end, and blocks with the real failure output rather than a summary of it."
+    }
+  ]
+}
