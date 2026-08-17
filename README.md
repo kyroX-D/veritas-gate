@@ -9,7 +9,7 @@ __   __  ___  _ __ (_)| |_   __ _  ___         __ _   __ _ | |_   ___
 ```
 
 [![CI](https://github.com/kyroX-D/veritas-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/kyroX-D/veritas-gate/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/kyroX-D/veritas-gate?sort=semver)](https://github.com/kyroX-D/veritas-gate/releases)
+[![release](https://img.shields.io/github/v/release/kyroX-D/veritas-gate)](https://github.com/kyroX-D/veritas-gate/releases)
 [![license](https://img.shields.io/github/license/kyroX-D/veritas-gate)](LICENSE)
 [![node](https://img.shields.io/badge/node-20.11%2B-brightgreen)](package.json)
 [![runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
